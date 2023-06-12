@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/appearance/target/debug/example.exe",
+            "args": [
+            ],
+            "cwd": "${workspaceFolder}/appearance",
+            "preLaunchTask": "cargo build"
+        },
+        {
+            "name": "Release",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/appearance/target/release/example.exe",
+            "args": [
+            ],
+            "cwd": "${workspaceFolder}/appearance",
+            "preLaunchTask": "cargo build release"
+        }
+    ]
+}

@@ -1,0 +1,34 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "cargo build",
+            "type": "cargo",
+            "command": "build",
+            "args": [
+                "--bin", "example"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/appearance/"
+            },
+        },
+        {
+            "label": "cargo build release",
+            "type": "cargo",
+            "command": "build",
+            "args": [
+                "--bin", "example",
+                "--release",
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/appearance/"
+            },
+        }
+    ]
+}
