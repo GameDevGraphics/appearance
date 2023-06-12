@@ -1,25 +1,18 @@
 [package]
-name = "appearance"
+name = "gl-helper"
 authors = ["Jason de Wolff"]
 version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-bitmask-enum = "2.1.0"
-stb_image = "0.2.4"
-gltf = "1.0.0"
-glam = "0.23.0"
 gl = "0.14.0"
 glutin = "0.29.1"
-gl-helper = { path = "../gl_helper" }
+imgui = "0.10.0"
+glam = "0.23.0"
 
 [lib]
-name = "appearance"
+name = "gl_helper"
 path = "src/lib.rs"
-
-[[bin]]
-name = "example"
-path = "src/bin.rs"
 
 [profile.dev]                           # Modify profile settings via config.
 opt-level = 0                           # Optimization level.

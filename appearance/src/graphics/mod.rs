@@ -1,5 +1,7 @@
 pub mod window;
 pub use window::*;
+pub mod renderer;
+pub use renderer::*;
 
 use crate::MainLoop;
 

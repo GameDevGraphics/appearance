@@ -3,6 +3,21 @@
     "tasks": [
         {
             "label": "cargo build",
+            "dependsOn": [
+                "cargo build gl_helper",
+                "cargo build appearance"
+            ]
+        },
+        {
+            "label": "cargo build release",
+            "dependsOn": [
+                "cargo build gl_helper release",
+                "cargo build appearance release"
+            ]
+        },
+
+        {
+            "label": "cargo build appearance",
             "type": "cargo",
             "command": "build",
             "args": [
@@ -16,7 +31,7 @@
             },
         },
         {
-            "label": "cargo build release",
+            "label": "cargo build appearance release",
             "type": "cargo",
             "command": "build",
             "args": [
@@ -28,6 +43,36 @@
             ],
             "options": {
                 "cwd": "${workspaceFolder}/appearance/"
+            },
+        },
+
+        {
+            "label": "cargo build gl_helper",
+            "type": "cargo",
+            "command": "build",
+            "args": [
+                "--lib",
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/gl_helper/"
+            },
+        },
+        {
+            "label": "cargo build gl_helper release",
+            "type": "cargo",
+            "command": "build",
+            "args": [
+                "--lib",
+                "--release",
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/gl_helper/"
             },
         }
     ]
