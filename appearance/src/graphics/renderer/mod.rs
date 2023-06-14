@@ -13,6 +13,6 @@ pub(crate) mod private {
 
     pub trait Renderer {
         fn resize(&mut self, width: u32, height: u32);
-        fn render(&mut self, window: &Window, camera: &Camera);
+        fn render(&mut self, window: &Window, camera: &mut Camera);
     }
 }

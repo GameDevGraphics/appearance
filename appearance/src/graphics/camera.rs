@@ -11,6 +11,8 @@ pub struct Camera {
 
     view_matrix: Mat4,
     proj_matrix: Mat4,
+    view_inv_matrix: Mat4,
+    proj_inv_matrix: Mat4,
     dirty_view: bool,
     dirty_proj: bool
 }
@@ -32,6 +34,8 @@ impl Camera {
             far: 300.0,
             view_matrix: Mat4::IDENTITY,
             proj_matrix: Mat4::IDENTITY,
+            view_inv_matrix: Mat4::IDENTITY,
+            proj_inv_matrix: Mat4::IDENTITY,
             dirty_view: true,
             dirty_proj: true
         }
@@ -91,16 +95,15 @@ impl Camera {
         self.dirty_proj = true;
     }
 
-    pub fn view_matrix(&mut self) -> &Mat4 {
+    fn recalculate_view(&mut self) {
         if self.dirty_view {
             self.dirty_view = false;
             self.view_matrix = Mat4::from_translation(self.position) * Mat4::from_quat(self.rotation);
+            self.view_inv_matrix = self.view_matrix.inverse();
         }
-
-        &self.view_matrix
     }
 
-    pub fn proj_matrix(&mut self) -> &Mat4 {
+    fn recalculate_proj(&mut self) {
         if self.dirty_proj {
             self.dirty_proj = false;
             self.proj_matrix = Mat4::perspective_rh(
@@ -109,8 +112,27 @@ impl Camera {
                 self.near,
                 self.far
             );
+            self.proj_inv_matrix = self.proj_matrix.inverse();
         }
+    }
 
+    pub fn view_matrix(&mut self) -> &Mat4 {
+        self.recalculate_view();
+        &self.view_matrix
+    }
+
+    pub fn view_inv_matrix(&mut self) -> &Mat4 {
+        self.recalculate_view();
+        &self.view_inv_matrix
+    }
+
+    pub fn proj_matrix(&mut self) -> &Mat4 {
+        self.recalculate_proj();
         &self.proj_matrix
+    }
+
+    pub fn proj_inv_matrix(&mut self) -> &Mat4 {
+        self.recalculate_proj();
+        &self.proj_inv_matrix
     }
 }

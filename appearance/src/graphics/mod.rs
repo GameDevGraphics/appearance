@@ -37,7 +37,7 @@ impl Graphics {
     }
 
     pub(crate) fn render(&mut self) {
-        self.renderer.render(&self.window, &self.camera);
+        self.renderer.render(&self.window, &mut self.camera);
     }
 
     pub fn window(&mut self) -> &mut Window {

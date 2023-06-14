@@ -38,7 +38,7 @@ impl MainLoop {
     {
         let mut resources = Resources::new();
         let input = Input::new();
-        let mut graphics = Graphics::new(&self, "Appearance", 1280, 720);
+        let mut graphics = Graphics::new(&self, "Appearance", 512, 512);
         let user_state = init(&mut resources, &mut graphics);
 
         let mut app_state = AppState {
