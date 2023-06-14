@@ -11,13 +11,10 @@ pub(super) struct ResourceManager<T: Clone> {
     pub(super) kill_time: f32
 }
 
-fn vec_remove_multiple<T>(vec: &mut Vec<T>, indices: &mut Vec<usize>) {
+fn vec_remove_multiple<T>(vec: &mut Vec<T>, indices: &mut[usize]) {
     indices.sort();    
-
-    let mut j: usize = 0;
-    for i in indices.iter() {
+    for (j, i) in indices.iter().enumerate() {
         vec.remove(i - j);
-        j += 1;
     }
 }
 
@@ -57,7 +54,7 @@ impl<T: Clone> ResourceManager<T> {
             }
         }
 
-        if resources_to_remove.len() > 0 {
+        if !resources_to_remove.is_empty() {
             let mut indices: Vec<usize> = Vec::with_capacity(resources_to_remove.len());
             let mut paths: Vec<String> = Vec::with_capacity(resources_to_remove.len());
             for i in resources_to_remove {

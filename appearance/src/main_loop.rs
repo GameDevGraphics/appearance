@@ -32,14 +32,14 @@ impl MainLoop {
         init: F0,
         update: F1
     ) where
-        F0: Fn(&mut Resources) -> U + 'static,
+        F0: Fn(&mut Resources, &mut Graphics) -> U + 'static,
         F1: Fn(&mut AppState<U>) + 'static,
         U: 'static
     {
         let mut resources = Resources::new();
         let input = Input::new();
-        let graphics = Graphics::new(&self, "Appearance", 1280, 720);
-        let user_state = init(&mut resources);
+        let mut graphics = Graphics::new(&self, "Appearance", 1280, 720);
+        let user_state = init(&mut resources, &mut graphics);
 
         let mut app_state = AppState {
             resources,
@@ -56,7 +56,7 @@ impl MainLoop {
                             *control_flow = ControlFlow::Exit
                         },
                         | WindowEvent::Resized(size) => {
-                            
+                            app_state.graphics.resize(size.width, size.height);
                         },
                         | WindowEvent::KeyboardInput { input, .. } => {
                             match input {
@@ -90,6 +90,7 @@ impl MainLoop {
 
                     app_state.resources.update();
                     app_state.input.update();
+                    app_state.graphics.render();
                 },
                 | Event::LoopDestroyed => {
                     

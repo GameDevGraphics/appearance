@@ -10,8 +10,9 @@ struct GameState {
     helmet_model: Rc<Model>
 }
 
-fn init(resources: &mut Resources) -> GameState {
+fn init(resources: &mut Resources, graphics: &mut Graphics) -> GameState {
     let helmet_model = resources.get_model("assets/models/DamagedHelmet/glTF/DamagedHelmet.gltf");
+    graphics.add_model(helmet_model.clone());
 
     GameState {
         helmet_model
@@ -19,5 +20,5 @@ fn init(resources: &mut Resources) -> GameState {
 }
 
 fn update(app: &mut AppState<GameState>) {
-    println!("{:?}", app.input.mouse_pos());
+    
 }
