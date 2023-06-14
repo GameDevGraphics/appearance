@@ -87,6 +87,9 @@ impl MainLoop {
                 },
                 | Event::RedrawRequested(_window_id) => {
                     update(&mut app_state);
+
+                    app_state.resources.update();
+                    app_state.input.update();
                 },
                 | Event::LoopDestroyed => {
                     

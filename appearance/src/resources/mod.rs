@@ -61,11 +61,19 @@ impl Resources {
         img
     }
 
-    fn process_node(&mut self, node: &gltf::Node, buffers: &[gltf::buffer::Data], _images: &[gltf::image::Data], base_path: &String, meshes: &mut Vec<Mesh>, materials: &mut Vec<Material>) {
-        let (translation, rotation, scale) = node.transform().decomposed();
-        let _translation = Vec3::new(translation[0], translation[1], translation[2]);
-        let _rotation = Quat::from_xyzw(rotation[3], rotation[0], rotation[1], rotation[2]); // Correct order?!?!?!?
-        let _scale = Vec3::new(scale[0], scale[1], scale[2]);
+    fn process_node(&mut self,
+        node: &gltf::Node,
+        buffers: &[gltf::buffer::Data],
+        _images: &[gltf::image::Data],
+        base_path: &String, 
+        materials: &mut[Material],
+    ) -> ModelNode {
+        let (position, rotation, scale) = node.transform().decomposed();
+        let position = Vec3::new(position[0], position[1], position[2]);
+        let rotation = Quat::from_xyzw(rotation[3], rotation[0], rotation[1], rotation[2]);
+        let scale = Vec3::new(scale[0], scale[1], scale[2]);
+
+        let mut node_mesh = None;
 
         if let Some(mesh) = node.mesh() {
             for primitive in mesh.primitives() {
@@ -239,18 +247,38 @@ impl Resources {
                         }
                     }
 
-                    meshes.push(Mesh {
+                    node_mesh = Some(Mesh {
                         vertices,
                         indices,
                         min,
                         max,
                         material_idx
                     });
-                } else {
-                    panic!("Failed to process mesh node. (Trying to parse a non-triangle)");
                 }
             }
         };
+
+        ModelNode {
+            position,
+            rotation,
+            scale,
+            mesh: node_mesh,
+            ..Default::default()
+        }
+    }
+
+    fn process_nodes_recursive(&mut self,
+        node: &gltf::Node,
+        buffers: &[gltf::buffer::Data],
+        images: &[gltf::image::Data],
+        base_path: &String, 
+        materials: &mut Vec<Material>
+    ) -> ModelNode {
+        let mut root_node = self.process_node(node, buffers, images, base_path, materials);
+        for child in node.children() {
+            root_node.children.push(Rc::new(self.process_nodes_recursive(&child, buffers, images, base_path, materials)));
+        }
+        root_node
     }
 
     pub fn get_model(&mut self, asset_path: &str) -> Rc<Model> {
@@ -259,18 +287,26 @@ impl Resources {
             None => {
                 let (document, buffers, images) = gltf::import(asset_path).expect("Failed to get model.");
 
-                let mut meshes = Vec::new();
                 let mut materials = vec![Material::default(); document.materials().len()];
                 if materials.is_empty() {
                     materials.push(Material::default());
                 }
-                
-                if document.nodes().len() > 0 {
-                    self.process_node(document.nodes().next().as_ref().unwrap(), &buffers, &images, &asset_path.to_owned(), &mut meshes, &mut materials);
+
+                let mut root_nodes = Vec::new();
+                if let Some(scene) = document.default_scene() {
+                    for root_node in scene.nodes() {
+                        root_nodes.push(Rc::new(self.process_nodes_recursive(
+                            &root_node,
+                            &buffers,
+                            &images,
+                            &asset_path.to_owned(),
+                            &mut materials
+                        )));
+                    }
                 }
 
                 let resource = Rc::new(Model {
-                    meshes,
+                    root_nodes,
                     materials: materials.into_iter().map(Rc::new).collect()
                 });
 

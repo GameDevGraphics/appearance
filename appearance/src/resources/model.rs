@@ -1,8 +1,8 @@
 use glam::*;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use super::Image;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Material {
     pub name: String,
     pub index: Option<usize>,
@@ -27,7 +27,7 @@ pub struct Material {
 impl Default for Material {
     fn default() -> Self {
         Material {
-            name: String::from("default"),
+            name: "default".to_owned(),
             index: None,
             base_color_factor: Vec4::new(1.0, 1.0, 1.0, 1.0),
             base_color_texture: None,
@@ -44,7 +44,7 @@ impl Default for Material {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Vertex {
     pub position: Vec3,
     pub normal: Vec3,
@@ -67,7 +67,7 @@ impl Default for Vertex {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
@@ -78,8 +78,31 @@ pub struct Mesh {
     pub material_idx: usize
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+pub struct ModelNode {
+    pub children: Vec<Rc<ModelNode>>,
+
+    pub position: Vec3,
+    pub rotation: Quat,
+    pub scale: Vec3,
+
+    pub mesh: Option<Mesh>
+}
+
+impl Default for ModelNode {
+    fn default() -> Self {
+        ModelNode {
+            children: Vec::new(),
+            position: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+            mesh: None
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Model {
-    pub meshes: Vec<Mesh>,
+    pub root_nodes: Vec<Rc<ModelNode>>,
     pub materials: Vec<Rc<Material>>
 }

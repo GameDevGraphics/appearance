@@ -1,11 +1,10 @@
 use glam::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Image {
     pub data: Vec<u8>,
     pub dimensions: IVec2,
     pub channel_count: i32,
-
     inv_dimensions: Vec2
 }
 
