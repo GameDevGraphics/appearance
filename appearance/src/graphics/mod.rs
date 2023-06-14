@@ -21,7 +21,7 @@ pub struct Graphics {
 impl Graphics {
     pub(crate) fn new(main_loop: &MainLoop, title: &'static str, width: u32, height: u32) -> Self {
         let window = Window::new(main_loop, title, width, height);
-        let renderer = Box::new(RaytracerCPU::new());
+        let renderer = Box::new(RaytracerCPU::new(&window));
         let camera = Camera::new();
 
         Graphics {
@@ -37,7 +37,7 @@ impl Graphics {
     }
 
     pub(crate) fn render(&mut self) {
-        self.renderer.render(&self.camera);
+        self.renderer.render(&self.window, &self.camera);
     }
 
     pub fn window(&mut self) -> &mut Window {
