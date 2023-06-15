@@ -21,6 +21,7 @@ pub struct Intersection {
     pub uv: Vec2
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug)]
 pub struct AABB {
     bounds: [Vec3; 2]
@@ -46,6 +47,67 @@ impl Triangle {
     pub fn centroid(&self) -> Vec3 {
         (self.p0 + self.p1 + self.p2) * 0.33333333
     }
+
+    #[allow(clippy::manual_range_contains)]
+    pub fn intersect(&self, ray: &Ray, cull: bool, tmin: f32, tmax: f32) -> Option<Intersection> {
+        let edge1 = self.p1 - self.p0;
+        let edge2 = self.p2 - self.p0;
+        let pvec = ray.direction.cross(edge2);
+        let det = edge1.dot(pvec);
+
+        let (mut t, mut u, mut v);
+        if cull {
+            if det < 0.00000001 {
+                return None;
+            }
+
+            let tvec = ray.origin - self.p0;
+            u = tvec.dot(pvec);
+            if u < 0.0 || u > det {
+                return None;
+            }
+
+            let qvec = tvec.cross(edge1);
+            v = ray.direction.dot(qvec);
+            if v < 0.0 || u + v > det {
+                return None;
+            }
+
+            t = edge2.dot(qvec);
+            if t < tmin || t > tmax {
+                return None;
+            }
+
+            let inv_det = 1.0 / det;
+            t *= inv_det;
+            u *= inv_det;
+            v *= inv_det;
+        } else {
+            if det > -0.00000001 && det < 0.00000001 {
+                return None;
+            }
+            let inv_det = 1.0 / det;
+
+            let tvec = ray.origin - self.p0;
+            u = tvec.dot(pvec) * inv_det;
+            if u < 0.0 || u > 1.0 {
+                return None;
+            }
+
+            let qvec = tvec.cross(edge1);
+            v = ray.direction.dot(qvec) * inv_det;
+            if v < 0.0 || u + v > 1.0 {
+                return None;
+            }
+
+            t = edge2.dot(qvec) * inv_det;
+        }
+
+        Some(Intersection {
+            t,
+            uv: Vec2::new(u, v)
+        })
+    }
 }
 
 impl AABB {
@@ -56,7 +118,7 @@ impl AABB {
     }
 
     pub fn extent(&self) -> Vec3 {
-        self.bounds[1] - self.bounds[0]
+        *self.max() - *self.min()
     }
 
     pub fn min(&self) -> &Vec3 {
@@ -65,6 +127,47 @@ impl AABB {
 
     pub fn max(&self) -> &Vec3 {
         &self.bounds[1]
+    }
+
+    pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
+        let mut txmin = (self.bounds[ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
+        let mut txmax = (self.bounds[1 - ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
+        let tymin = (self.bounds[ray.signs[1] as usize].y - ray.origin.y) * ray.inv_direction.y;
+        let tymax = (self.bounds[1 - ray.signs[1] as usize].y - ray.origin.y) * ray.inv_direction.y;
+
+        if txmin > tymax || tymin > txmax {
+            return None;
+        }
+
+        if tymin > txmin {
+            txmin = tymin;
+        }
+        if tymax < txmax {
+            txmax = tymax;
+        }
+
+        let tzmin = (self.bounds[ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
+        let tzmax = (self.bounds[1 - ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
+
+        if txmin > tzmax || tzmin > txmax {
+            return None;
+        }
+
+        if tzmin > txmin {
+            txmin = tzmin;
+        }
+        // if tzmax < txmax {
+        //     txmax = tzmax;
+        // }
+
+        if txmin < tmin || txmin > tmax {
+            return None;
+        }
+
+        Some(Intersection {
+            t: txmin,
+            ..Default::default()
+        })
     }
 }
 
@@ -92,84 +195,5 @@ impl Ray {
             inv_direction,
             signs
         }
-    }
-
-    pub fn intersect_aabb(&self, aabb: &AABB, tmin: f32, tmax: f32) -> Option<Intersection> {
-        let mut txmin = (aabb.bounds[self.signs[0] as usize].x - self.origin.x) * self.inv_direction.x;
-        let mut txmax = (aabb.bounds[1 - self.signs[0] as usize].x - self.origin.x) * self.inv_direction.x;
-        let tymin = (aabb.bounds[self.signs[1] as usize].y - self.origin.y) * self.inv_direction.y;
-        let tymax = (aabb.bounds[1 - self.signs[1] as usize].y - self.origin.y) * self.inv_direction.y;
-
-        if txmin > tymax || tymin > txmax {
-            return None;
-        }
-
-        if tymin > txmin {
-            txmin = tymin;
-        }
-        if tymax < txmax {
-            txmax = tymax;
-        }
-
-        let tzmin = (aabb.bounds[self.signs[2] as usize].z - self.origin.z) * self.inv_direction.z;
-        let tzmax = (aabb.bounds[1 - self.signs[2] as usize].z - self.origin.z) * self.inv_direction.z;
-
-        if txmin > tzmax || tzmin > txmax {
-            return None;
-        }
-
-        if tzmin > txmin {
-            txmin = tzmin;
-        }
-        if tzmax < txmax {
-            txmax = tzmax;
-        }
-
-        if txmin < tmin || txmin > tmax {
-            return None;
-        }
-
-        Some(Intersection {
-            t: txmin,
-            ..Default::default()
-        })
-    }
-
-    pub fn intersect_triangle(&self, triangle: &Triangle, tmin: f32, tmax: f32) -> Option<Intersection> {
-        let edge1 = triangle.p1 - triangle.p0;
-        let edge2 = triangle.p2 - triangle.p0;
-        let pvec = self.direction.cross(edge2);
-        let det = edge1.dot(pvec);
-
-        if det < 0.00001 {
-            return None;
-        }
-
-        let tvec = self.origin - triangle.p0;
-        let mut u = tvec.dot(pvec);
-        if u < 0.0 || u > det {
-            return None;
-        }
-
-        let qvec = tvec.cross(edge1);
-        let mut v = self.direction.dot(qvec);
-        if v < 0.0 || u + v > det {
-            return None;
-        }
-
-        let mut t = edge2.dot(qvec);
-        if t < tmin || t > tmax {
-            return None;
-        }
-
-        let inv_det = 1.0 / det;
-        t *= inv_det;
-        u *= inv_det;
-        v *= inv_det;
-
-        Some(Intersection {
-            t,
-            uv: Vec2::new(u, v)
-        })
     }
 }

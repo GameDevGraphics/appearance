@@ -4,7 +4,6 @@ use super::{Triangle, Ray, AABB, Intersection};
 #[derive(Clone, Debug)]
 struct Node {
     bounds: AABB,
-    lchild: u32,
     first_prim: u32,
     prim_count: u32
 }
@@ -13,7 +12,6 @@ impl Default for Node {
     fn default() -> Self {
         Node {
             bounds: AABB::new(&Vec3::ZERO, &Vec3::ZERO),
-            lchild: 0,
             first_prim: 0,
             prim_count: 0
         }
@@ -84,9 +82,6 @@ impl BVH {
                 if triangle_centroids[i as usize][axis] < split_pos {
                     i += 1;
                 } else {
-                    // let tmp = triangles[i];
-                    // triangles[i] = triangles[j];
-                    // triangles[j] = tmp;
                     triangles.swap(i as usize, j as usize);
                     triangle_centroids.swap(i as usize, j as usize);
                     j -= 1;
@@ -98,11 +93,11 @@ impl BVH {
             if left_count == 0 || left_count == node.prim_count as usize {
                 return;
             }
-            node.lchild = *node_count as u32;
-            *node_count += 2;
             first_prim = node.first_prim;
+            node.first_prim = *node_count as u32;
+            *node_count += 2;
             prim_count = node.prim_count;
-            lchild = node.lchild as usize;
+            lchild = node.first_prim as usize;
 
             node.prim_count = 0;
         }
@@ -126,13 +121,13 @@ impl BVH {
 
     fn intersect_recursive(&self, ray: &Ray, node_idx: usize, tmin: f32, tmax: f32, closest: &mut Option<Intersection>) {
         let node = &self.nodes[node_idx];
-        if ray.intersect_aabb(&node.bounds, tmin, tmax).is_none()  {
+        if node.bounds.intersect(ray, tmin, tmax).is_none()  {
             return;
         }
 
         if node.is_leaf() {
             for i in node.first_prim..(node.first_prim + node.prim_count) {
-                if let Some(hit) = ray.intersect_triangle(&self.triangles[i as usize], tmin, tmax) {
+                if let Some(hit) = self.triangles[i as usize].intersect(ray, false, tmin, tmax) {
                     if let Some(closest_value) = closest {
                         if hit.t < closest_value.t {
                             *closest = Some(hit);
@@ -144,8 +139,8 @@ impl BVH {
             }
         }
         else {
-            self.intersect_recursive(ray, node.lchild as usize, tmin, tmax, closest);
-            self.intersect_recursive(ray, node.lchild as usize + 1, tmin, tmax, closest);
+            self.intersect_recursive(ray, node.first_prim as usize, tmin, tmax, closest);
+            self.intersect_recursive(ray, node.first_prim as usize + 1, tmin, tmax, closest);
         }
     }
 }
