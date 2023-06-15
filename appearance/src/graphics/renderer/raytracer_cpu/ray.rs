@@ -1,5 +1,6 @@
 use glam::*;
 
+#[derive(Clone, Debug)]
 pub struct Ray {
     origin: Vec3,
     direction: Vec3,
@@ -7,17 +8,20 @@ pub struct Ray {
     signs: [bool; 3]
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Triangle {
     p0: Vec3,
     p1: Vec3,
     p2: Vec3
 }
 
+#[derive(Clone, Debug)]
 pub struct Intersection {
     pub t: f32,
     pub uv: Vec2
 }
 
+#[derive(Clone, Debug)]
 pub struct AABB {
     bounds: [Vec3; 2]
 }
@@ -30,6 +34,18 @@ impl Triangle {
             p2: *p2
         }
     }
+
+    pub fn min(&self) -> Vec3 {
+        self.p0.min(self.p1.min(self.p2))
+    }
+
+    pub fn max(&self) -> Vec3 {
+        self.p0.max(self.p1.max(self.p2))
+    }
+
+    pub fn centroid(&self) -> Vec3 {
+        (self.p0 + self.p1 + self.p2) * 0.33333333
+    }
 }
 
 impl AABB {
@@ -37,6 +53,18 @@ impl AABB {
         AABB {
             bounds: [*min, *max]
         }
+    }
+
+    pub fn extent(&self) -> Vec3 {
+        self.bounds[1] - self.bounds[0]
+    }
+
+    pub fn min(&self) -> &Vec3 {
+        &self.bounds[0]
+    }
+
+    pub fn max(&self) -> &Vec3 {
+        &self.bounds[1]
     }
 }
 
@@ -66,44 +94,48 @@ impl Ray {
         }
     }
 
-    pub fn intersect_aabb(&self, aabb: &AABB) -> Option<Intersection> {
-        let mut tmin = (aabb.bounds[self.signs[0] as usize].x - self.origin.x) * self.inv_direction.x;
-        let mut tmax = (aabb.bounds[1 - self.signs[0] as usize].x - self.origin.x) * self.inv_direction.x;
+    pub fn intersect_aabb(&self, aabb: &AABB, tmin: f32, tmax: f32) -> Option<Intersection> {
+        let mut txmin = (aabb.bounds[self.signs[0] as usize].x - self.origin.x) * self.inv_direction.x;
+        let mut txmax = (aabb.bounds[1 - self.signs[0] as usize].x - self.origin.x) * self.inv_direction.x;
         let tymin = (aabb.bounds[self.signs[1] as usize].y - self.origin.y) * self.inv_direction.y;
         let tymax = (aabb.bounds[1 - self.signs[1] as usize].y - self.origin.y) * self.inv_direction.y;
 
-        if tmin > tymax || tymin > tmax {
+        if txmin > tymax || tymin > txmax {
             return None;
         }
 
-        if tymin > tmin {
-            tmin = tymin;
+        if tymin > txmin {
+            txmin = tymin;
         }
-        if tymax < tmax {
-            tmax = tymax;
+        if tymax < txmax {
+            txmax = tymax;
         }
 
         let tzmin = (aabb.bounds[self.signs[2] as usize].z - self.origin.z) * self.inv_direction.z;
         let tzmax = (aabb.bounds[1 - self.signs[2] as usize].z - self.origin.z) * self.inv_direction.z;
 
-        if tmin > tzmax || tzmin > tmax {
+        if txmin > tzmax || tzmin > txmax {
             return None;
         }
 
-        if tzmin > tmin {
-            tmin = tzmin;
+        if tzmin > txmin {
+            txmin = tzmin;
         }
-        if tzmax < tmax {
-            tmax = tzmax;
+        if tzmax < txmax {
+            txmax = tzmax;
+        }
+
+        if txmin < tmin || txmin > tmax {
+            return None;
         }
 
         Some(Intersection {
-            t: tmin,
+            t: txmin,
             ..Default::default()
         })
     }
 
-    pub fn intersect_triangle(&self, triangle: &Triangle) -> Option<Intersection> {
+    pub fn intersect_triangle(&self, triangle: &Triangle, tmin: f32, tmax: f32) -> Option<Intersection> {
         let edge1 = triangle.p1 - triangle.p0;
         let edge2 = triangle.p2 - triangle.p0;
         let pvec = self.direction.cross(edge2);
@@ -121,11 +153,15 @@ impl Ray {
 
         let qvec = tvec.cross(edge1);
         let mut v = self.direction.dot(qvec);
-        if v < 0.0 || v > det {
+        if v < 0.0 || u + v > det {
             return None;
         }
 
         let mut t = edge2.dot(qvec);
+        if t < tmin || t > tmax {
+            return None;
+        }
+
         let inv_det = 1.0 / det;
         t *= inv_det;
         u *= inv_det;

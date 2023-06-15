@@ -22,7 +22,8 @@ impl Graphics {
     pub(crate) fn new(main_loop: &MainLoop, title: &'static str, width: u32, height: u32) -> Self {
         let window = Window::new(main_loop, title, width, height);
         let renderer = Box::new(RaytracerCPU::new(&window));
-        let camera = Camera::new();
+        let mut camera = Camera::new();
+        camera.set_position(&Vec3::new(0.0, 0.0, -5.0));
 
         Graphics {
             window,

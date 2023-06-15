@@ -8,6 +8,8 @@ mod ray;
 use ray::*;
 mod mesh;
 use mesh::*;
+mod acceleration_structure;
+use acceleration_structure::*;
 
 pub struct RaytracerCPU {
     framebuffer: Framebuffer,
@@ -52,8 +54,8 @@ impl private::Renderer for RaytracerCPU {
 
                 let ray = Ray::new(&origin.xyz(), &direction.xyz());
 
-                if let Some(hit) = ray.intersect_aabb(&AABB::new(&Vec3::new(-0.5, -0.5, -0.5), &Vec3::new(0.5, 0.5, 0.5))) {//self.meshes[0].intersect(&ray) {
-                    self.framebuffer.set_pixel(x, y, &Vec3::new(1.0, 1.0, 1.0));
+                if let Some(hit) = self.meshes[0].intersect(&ray, 0.01, 100.0) {
+                    self.framebuffer.set_pixel(x, y, &Vec3::new(1.0, 1.0, hit.t * 0.1));
                 } else {
                     self.framebuffer.set_pixel(x, y, &Vec3::new(0.0, 0.0, 0.0));
                 }

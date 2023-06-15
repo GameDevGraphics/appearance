@@ -13,7 +13,7 @@ struct GameState {
 }
 
 fn init(resources: &mut Resources, graphics: &mut Graphics) -> GameState {
-    let helmet_model = resources.get_model("assets/models/AnimatedCube/glTF/AnimatedCube.gltf");
+    let helmet_model = resources.get_model("assets/models/DamagedHelmet/glTF/DamagedHelmet.gltf");
     graphics.add_model(helmet_model.clone());
 
     GameState {
