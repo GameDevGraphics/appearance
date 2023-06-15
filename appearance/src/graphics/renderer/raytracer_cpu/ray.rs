@@ -21,10 +21,30 @@ pub struct Intersection {
     pub uv: Vec2
 }
 
+impl Default for Intersection {
+    fn default() -> Self {
+        Intersection {
+            t: f32::MAX,
+            uv: Vec2::ZERO
+        }
+    }
+}
+
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct AABB {
     bounds: [Vec3; 2]
+}
+
+impl Default for AABB {
+    fn default() -> Self {
+        AABB {
+            bounds: [
+                Vec3::splat(f32::MAX),
+                Vec3::splat(f32::MIN)
+            ]
+        }
+    }
 }
 
 impl Triangle {
@@ -117,6 +137,15 @@ impl AABB {
         }
     }
 
+    pub fn grow(&mut self, triangle: &Triangle) {
+        self.bounds[0] = triangle.p0.min(self.bounds[0]);
+        self.bounds[1] = triangle.p0.max(self.bounds[1]);
+        self.bounds[0] = triangle.p1.min(self.bounds[0]);
+        self.bounds[1] = triangle.p1.max(self.bounds[1]);
+        self.bounds[0] = triangle.p2.min(self.bounds[0]);
+        self.bounds[1] = triangle.p2.max(self.bounds[1]);
+    }
+
     pub fn extent(&self) -> Vec3 {
         *self.max() - *self.min()
     }
@@ -127,6 +156,11 @@ impl AABB {
 
     pub fn max(&self) -> &Vec3 {
         &self.bounds[1]
+    }
+
+    pub fn surface_area(&self) -> f32 {
+        let extent = self.extent();
+        (extent.x * extent.y + extent.x * extent.z + extent.y * extent.z) * 2.0
     }
 
     pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
@@ -169,15 +203,6 @@ impl AABB {
             ..Default::default()
         })
     }
-}
-
-impl Default for Intersection {
-     fn default() -> Self {
-         Intersection {
-            t: 0.0,
-            uv: Vec2::ZERO
-        }
-     }
 }
 
 impl Ray {
