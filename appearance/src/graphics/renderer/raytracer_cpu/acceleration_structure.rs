@@ -24,11 +24,11 @@ impl Node {
         self.prim_count != 0
     }
 
-    pub fn update_bounds(&mut self, triangles: &[Triangle]) {
+    pub fn update_bounds(&mut self, triangles: &[Triangle], indices: &[usize]) {
         let mut min = Vec3::splat(f32::MAX);
         let mut max = Vec3::splat(f32::MIN);
         for i in self.first_prim..(self.first_prim + self.prim_count) {
-            let triangle = &triangles[i as usize];
+            let triangle = &triangles[indices[i as usize]];
             min = min.min(triangle.min());
             max = max.max(triangle.max());
         }
@@ -45,7 +45,9 @@ struct Bin {
 #[allow(clippy::upper_case_acronyms)]
 pub struct BVH {
     nodes: Vec<Node>,
-    triangles: Vec<Triangle>
+    node_count: usize,
+    triangles: Vec<Triangle>,
+    indices: Vec<usize>
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -55,35 +57,75 @@ pub enum BVHBuildMode {
 }
 
 impl BVH {
-    pub fn new(mut triangles: Vec<Triangle>, build_mode: BVHBuildMode) -> Self {
-        let mut triangle_centroids = Vec::with_capacity(triangles.len());
-        for triangle in &triangles {
+    pub fn new(triangles: Vec<Triangle>) -> Self {
+        let mut indices = Vec::with_capacity(triangles.len());
+        for i in 0..triangles.len() {
+            indices.push(i);
+        }
+
+        BVH {
+            nodes: vec![],
+            node_count: 0,
+            triangles,
+            indices
+        }
+    }
+
+    pub fn triangles(&mut self) -> &mut Vec<Triangle> {
+        &mut self.triangles
+    }
+
+    pub fn rebuild(&mut self, build_mode: BVHBuildMode) {
+        let mut triangle_centroids = Vec::with_capacity(self.triangles.len());
+        for triangle in &self.triangles {
             triangle_centroids.push(triangle.centroid());
         }
 
-        let mut nodes = vec![Node::default(); triangles.len() * 2 - 1];
-        let mut node_count = 1;
-        let root_node = &mut nodes[0];
-        root_node.prim_count = triangles.len() as u32;
-        root_node.update_bounds(&triangles);
+        self.nodes = vec![Node::default(); self.triangles.len() * 2 - 1];
+        self.node_count = 1;
+        let root_node = &mut self.nodes[0];
+        root_node.first_prim = 0;
+        root_node.prim_count = self.triangles.len() as u32;
+        root_node.update_bounds(&self.triangles, &self.indices);
 
         let timer = Timer::new();
-        Self::subdivide(0, &mut nodes, &mut node_count, &mut triangles, &mut triangle_centroids, build_mode);
+        Self::subdivide(0, &mut self.nodes, &mut self.node_count, &self.triangles, &mut self.indices, &triangle_centroids, build_mode);
         println!("BVH build in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
+    }
 
-        BVH {
-            nodes,
-            triangles
+    pub fn refit(&mut self) {
+        assert_ne!(self.node_count, 0, "Failed to refit BVH.");
+
+        let timer = Timer::new();
+        for i in (0..self.node_count).rev() {
+            let first_prim; {
+                let node = &mut self.nodes[i];
+                if node.is_leaf() {
+                    node.update_bounds(&self.triangles, &self.indices);
+                    continue;
+                }
+                first_prim = node.first_prim;
+            }
+
+            let mut bounds_refitted; {
+                let left_node = &self.nodes[first_prim as usize];
+                let right_node = &self.nodes[first_prim as usize + 1];
+                bounds_refitted = left_node.bounds;
+                bounds_refitted.grow_aabb(&right_node.bounds);
+            }
+
+            self.nodes[i].bounds = bounds_refitted;
         }
+        println!("BVH refit in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
     }
 
     fn best_split(
         node: &Node, build_mode: BVHBuildMode,
-        triangles: &[Triangle], triangle_centroids: &[Vec3]
+        triangles: &[Triangle], indices: &[usize], triangle_centroids: &[Vec3]
     ) -> (usize, f32, f32) {
         let mut tight_bounds = AABB::default();
         for i in node.first_prim..(node.first_prim + node.prim_count) {
-            tight_bounds.grow_vec3(&triangle_centroids[i as usize]);
+            tight_bounds.grow_vec3(&triangle_centroids[indices[i as usize]]);
         }
         let extent = tight_bounds.extent();
 
@@ -104,8 +146,8 @@ impl BVH {
             let inv_scale = bin_count as f32 / extent[axis];
 
             for i in node.first_prim..(node.first_prim + node.prim_count) {
-                let triangle = &triangles[i as usize];
-                let centroid = &triangle_centroids[i as usize];
+                let triangle = &triangles[indices[i as usize]];
+                let centroid = &triangle_centroids[indices[i as usize]];
 
                 let bin_idx = (bin_count - 1).min(
                     ((centroid[axis] - tight_bounds.min()[axis]) * inv_scale) as i32
@@ -151,7 +193,7 @@ impl BVH {
 
     fn subdivide(
         idx: usize, nodes: &mut Vec<Node>, node_count: &mut usize,
-        triangles: &mut Vec<Triangle>, triangle_centroids: &mut Vec<Vec3>,
+        triangles: &[Triangle], indices: &mut Vec<usize>, triangle_centroids: &[Vec3],
         build_mode: BVHBuildMode
     ) {
         let (mut i, left_count, first_prim, prim_count, lchild); {
@@ -165,6 +207,7 @@ impl BVH {
                 node,
                 build_mode,
                 triangles,
+                indices,
                 triangle_centroids
             );
 
@@ -177,11 +220,10 @@ impl BVH {
             i = node.first_prim as i32;
             let mut j = i + node.prim_count as i32 - 1;
             while i <= j {
-                if triangle_centroids[i as usize][axis] < split_pos {
+                if triangle_centroids[indices[i as usize]][axis] < split_pos {
                     i += 1;
                 } else {
-                    triangles.swap(i as usize, j as usize);
-                    triangle_centroids.swap(i as usize, j as usize);
+                    indices.swap(i as usize, j as usize);
                     j -= 1;
                 }
             }
@@ -205,10 +247,10 @@ impl BVH {
         nodes[lchild + 1].first_prim = i as u32;
         nodes[lchild + 1].prim_count = prim_count - left_count as u32;
 
-        nodes[lchild].update_bounds(triangles);
-        nodes[lchild + 1].update_bounds(triangles);
-        Self::subdivide(lchild, nodes, node_count, triangles, triangle_centroids, build_mode);
-        Self::subdivide(lchild + 1, nodes, node_count, triangles, triangle_centroids, build_mode);
+        nodes[lchild].update_bounds(triangles, indices);
+        nodes[lchild + 1].update_bounds(triangles, indices);
+        Self::subdivide(lchild, nodes, node_count, triangles, indices, triangle_centroids, build_mode);
+        Self::subdivide(lchild + 1, nodes, node_count, triangles, indices, triangle_centroids, build_mode);
     }
 
     pub fn intersect(&mut self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
@@ -223,7 +265,7 @@ impl BVH {
             heat += 1;
             if node.is_leaf() {
                 for i in node.first_prim..(node.first_prim + node.prim_count) {
-                    if let Some(hit) = self.triangles[i as usize].intersect(ray, false, tmin, tmax) {
+                    if let Some(hit) = self.triangles[self.indices[i as usize]].intersect(ray, false, tmin, tmax) {
                         if let Some(closest_value) = &closest {
                             if hit.t < closest_value.t {
                                 closest = Some(hit);

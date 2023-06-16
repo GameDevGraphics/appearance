@@ -45,6 +45,8 @@ impl private::Renderer for RaytracerCPU {
 
         let origin = *camera.view_inv_matrix() * Vec4::new(0.0, 0.0, 0.0, 1.0);
 
+        self.meshes[0].animate();
+
         for x in 0..width {
             for y in 0..height {
                 let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);

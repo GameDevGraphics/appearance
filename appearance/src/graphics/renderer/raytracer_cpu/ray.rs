@@ -10,9 +10,9 @@ pub struct Ray {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Triangle {
-    p0: Vec3,
-    p1: Vec3,
-    p2: Vec3
+    pub p0: Vec3,
+    pub p1: Vec3,
+    pub p2: Vec3
 }
 
 #[derive(Clone, Debug)]
