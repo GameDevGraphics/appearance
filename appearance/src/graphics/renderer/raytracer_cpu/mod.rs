@@ -55,7 +55,12 @@ impl private::Renderer for RaytracerCPU {
                 let ray = Ray::new(&origin.xyz(), &direction.xyz());
 
                 if let Some(hit) = self.meshes[0].intersect(&ray, 0.01, 100.0) {
-                    self.framebuffer.set_pixel(x, y, &Vec3::new(1.0, 1.0, hit.t * 0.2));
+                    let cold = Vec3::new(0.0, 1.0, 0.0);
+                    let hot = Vec3::new(1.0, 0.0, 0.0);
+                    let t = (hit.heat as f32 / 50.0).clamp(0.0, 1.0);
+                    let color = cold.lerp(hot, t);
+
+                    self.framebuffer.set_pixel(x, y, &color);//&Vec3::new(1.0, 1.0, hit.t * 0.2));
                 } else {
                     self.framebuffer.set_pixel(x, y, &Vec3::new(0.0, 0.0, 0.0));
                 }

@@ -1,5 +1,6 @@
 use glam::*;
 use crate::Timer;
+
 use super::{Triangle, Ray, AABB, Intersection};
 
 #[derive(Clone, Copy, Debug)]
@@ -56,6 +57,8 @@ pub enum BVHBuildMode {
 
 impl BVH {
     pub fn new(mut triangles: Vec<Triangle>, build_mode: BVHBuildMode) -> Self {
+        let timer = Timer::new();
+
         let mut triangle_centroids = Vec::with_capacity(triangles.len());
         for triangle in &triangles {
             triangle_centroids.push(triangle.centroid());
@@ -66,9 +69,8 @@ impl BVH {
         let root_node = &mut nodes[0];
         root_node.prim_count = triangles.len() as u32;
         root_node.update_bounds(&triangles);
-
-        let timer = Timer::new();
         Self::subdivide(0, &mut nodes, &mut node_count, &mut triangles, &mut triangle_centroids, build_mode);
+
         println!("BVH build in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
 
         BVH {
@@ -76,6 +78,29 @@ impl BVH {
             triangles
         }
     }
+
+    // fn evaluate_sah(
+    //     node: &Node, axis: usize, split_pos: f32,
+    //     triangles: &[Triangle], triangle_centroids: &[Vec3]
+    // ) -> f32 {
+    //     let mut left = AABB::default();
+    //     let mut right = AABB::default();
+    //     let mut left_count = 0;
+    //     let mut right_count = 0;
+    //     for i in node.first_prim..(node.first_prim + node.prim_count) {
+    //         let triangle = &triangles[i as usize];
+    //         let centroid = &triangle_centroids[i as usize];
+
+    //         if centroid[axis] < split_pos {
+    //             left_count += 1;
+    //             left.grow_triangle(triangle);
+    //         } else {
+    //             right_count += 1;
+    //             right.grow_triangle(triangle);
+    //         }
+    //     }
+    //     (left_count as f32 * left.surface_area()) + (right_count as f32 * right.surface_area())
+    // }
 
     fn best_split(
         node: &Node, build_mode: BVHBuildMode,
@@ -93,50 +118,44 @@ impl BVH {
 
         let bin_count = match build_mode {
             BVHBuildMode::FastBuild => 8,
-            BVHBuildMode::FastTrace => 32
+            BVHBuildMode::FastTrace => 128
         };
 
         for axis in 0..3 {
-            let mut bin = [Bin::default(); 32];
-            if extent[axis] == 0.0 {
-                continue;
-            }
-            let inv_scale = bin_count as f32 / extent[axis];
+            let mut bins = [Bin::default(); 128];
+            let scale = bin_count as f32 / extent[axis];
 
             for i in node.first_prim..(node.first_prim + node.prim_count) {
-                let triangle = &triangles[i as usize];
-                let centroid = &triangle_centroids[i as usize];
-
-                let bin_idx = (bin_count - 1).min(
-                    ((centroid[axis] - tight_bounds.min()[axis]) * inv_scale) as i32
+                let bin_idx = (bin_count as f32 - 1.0).min(
+                    (triangle_centroids[i as usize][axis] - tight_bounds.min()[axis]) * scale
                 ) as usize;
-                bin[bin_idx].prim_count += 1;
-                bin[bin_idx].bounds.grow_triangle(triangle);
+                bins[bin_idx].prim_count += 1;
+                bins[bin_idx].bounds.grow_triangle(&triangles[i as usize]);
             }
 
-            let mut left_area   = [0.0; 32 - 1];
-            let mut right_area  = [0.0; 32 - 1];
-            let mut left_count  = [0;   32 - 1];
-            let mut right_count = [0;   32 - 1];
+            let mut left_area = [0.0; 128 - 1];
+            let mut right_area = [0.0; 128 - 1];
+            let mut left_count = [0; 128 - 1];
+            let mut right_count = [0; 128 - 1];
 
             let mut left_aabb = AABB::default();
             let mut right_aabb = AABB::default();
             let mut left_sum = 0;
             let mut right_sum = 0;
-            for i in 0..(bin_count as usize - 1) {
-                left_sum += bin[i].prim_count;
+            for i in 0..bin_count as usize - 1 {
+                left_sum += bins[i].prim_count;
                 left_count[i] = left_sum;
-                left_aabb.grow_aabb(&bin[i].bounds);
+                left_aabb.grow_aabb(&bins[i].bounds);
                 left_area[i] = left_aabb.surface_area();
 
-                right_sum += bin[bin_count as usize - 1 - i].prim_count;
+                right_sum += bins[bin_count as usize - 1 - i].prim_count;
                 right_count[bin_count as usize - 2 - i] = right_sum;
-                right_aabb.grow_aabb(&bin[bin_count as usize - 1 - i].bounds);
+                right_aabb.grow_aabb(&bins[bin_count as usize - 1 - i].bounds);
                 right_area[bin_count as usize - 2 - i] = right_aabb.surface_area();
             }
 
             let scale = extent[axis] / bin_count as f32;
-            for i in 0..(bin_count as usize - 1) {
+            for i in 0..bin_count as usize - 1 {
                 let cost = (left_count[i] as f32 * left_area[i]) + (right_count[i] as f32 * right_area[i]);
                 if cost < best_cost {
                     best_cost = cost;
@@ -146,7 +165,7 @@ impl BVH {
             }
         }
 
-        (best_axis, best_cost, best_split_pos)
+        (best_axis, best_split_pos, best_cost)
     }
 
     fn subdivide(
@@ -161,16 +180,15 @@ impl BVH {
             }
 
             // Decide split plane
-            let (axis, cost, split_pos) = Self::best_split(
+            let (axis, split_pos, cost) = Self::best_split(
                 node,
                 build_mode,
                 triangles,
                 triangle_centroids
             );
-
             let parent_cost = node.prim_count as f32 * node.bounds.surface_area();
             if parent_cost < cost {
-                return;
+                //return;
             }
             
             // Sort triangles by plane

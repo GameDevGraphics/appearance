@@ -18,14 +18,17 @@ pub struct Triangle {
 #[derive(Clone, Debug)]
 pub struct Intersection {
     pub t: f32,
-    pub uv: Vec2
+    pub uv: Vec2,
+    pub heat: u32
 }
 
 impl Default for Intersection {
+    #[inline]
     fn default() -> Self {
         Intersection {
             t: f32::MAX,
-            uv: Vec2::ZERO
+            uv: Vec2::ZERO,
+            heat: 0
         }
     }
 }
@@ -37,6 +40,7 @@ pub struct AABB {
 }
 
 impl Default for AABB {
+    #[inline]
     fn default() -> Self {
         AABB {
             bounds: [
@@ -48,6 +52,7 @@ impl Default for AABB {
 }
 
 impl Triangle {
+    #[inline]
     pub fn new(p0: &Vec3, p1: &Vec3, p2: &Vec3) -> Self {
         Triangle {
             p0: *p0,
@@ -56,14 +61,17 @@ impl Triangle {
         }
     }
 
+    #[inline]
     pub fn min(&self) -> Vec3 {
         self.p0.min(self.p1.min(self.p2))
     }
 
+    #[inline]
     pub fn max(&self) -> Vec3 {
         self.p0.max(self.p1.max(self.p2))
     }
 
+    #[inline]
     pub fn centroid(&self) -> Vec3 {
         (self.p0 + self.p1 + self.p2) * 0.33333333
     }
@@ -125,42 +133,62 @@ impl Triangle {
 
         Some(Intersection {
             t,
-            uv: Vec2::new(u, v)
+            uv: Vec2::new(u, v),
+            ..Default::default()
         })
     }
 }
 
 impl AABB {
+    #[inline]
     pub fn new(min: &Vec3, max: &Vec3) -> Self {
         AABB {
             bounds: [*min, *max]
         }
     }
 
-    pub fn grow(&mut self, triangle: &Triangle) {
-        self.bounds[0] = triangle.p0.min(self.bounds[0]);
-        self.bounds[1] = triangle.p0.max(self.bounds[1]);
-        self.bounds[0] = triangle.p1.min(self.bounds[0]);
-        self.bounds[1] = triangle.p1.max(self.bounds[1]);
-        self.bounds[0] = triangle.p2.min(self.bounds[0]);
-        self.bounds[1] = triangle.p2.max(self.bounds[1]);
+    #[inline]
+    pub fn grow_aabb(&mut self, aabb: &AABB) {
+        if aabb.min().x == f32::MAX {
+            return;
+        }
+        
+        self.grow_vec3(&aabb.bounds[0]);
+        self.grow_vec3(&aabb.bounds[1]);
     }
 
+    #[inline]
+    pub fn grow_triangle(&mut self, triangle: &Triangle) {
+        self.grow_vec3(&triangle.p0);
+        self.grow_vec3(&triangle.p1);
+        self.grow_vec3(&triangle.p2);
+    }
+
+    #[inline]
+    pub fn grow_vec3(&mut self, p: &Vec3) {
+        self.bounds[0] = p.min(self.bounds[0]);
+        self.bounds[1] = p.max(self.bounds[1]);
+    }
+
+    #[inline]
     pub fn extent(&self) -> Vec3 {
         *self.max() - *self.min()
     }
 
+    #[inline]
     pub fn min(&self) -> &Vec3 {
         &self.bounds[0]
     }
 
+    #[inline]
     pub fn max(&self) -> &Vec3 {
         &self.bounds[1]
     }
 
+    #[inline]
     pub fn surface_area(&self) -> f32 {
         let extent = self.extent();
-        (extent.x * extent.y + extent.x * extent.z + extent.y * extent.z) * 2.0
+        extent.x * extent.y + extent.y * extent.z + extent.z * extent.x
     }
 
     pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
@@ -206,6 +234,7 @@ impl AABB {
 }
 
 impl Ray {
+    #[inline]
     pub fn new(origin: &Vec3, direction: &Vec3) -> Self {
         let inv_direction = 1.0 / *direction;
         let signs = [

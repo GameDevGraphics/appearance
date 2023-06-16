@@ -72,6 +72,7 @@ impl FramebufferTexture {
         }
     }
 
+    #[inline]
     fn set_pixel(&mut self, x: u32, y: u32, value: u32) {
         self.pixels[(x + y * self.width) as usize] = value;
     }
@@ -138,17 +139,20 @@ impl Framebuffer {
         }
     }
 
+    #[inline]
     pub fn width(&self) -> u32 {
         self.framebuffer_textures[0].width
     }
 
+    #[inline]
     pub fn height(&self) -> u32 {
         self.framebuffer_textures[0].height
     }
 
+    #[inline]
     pub fn set_pixel(&mut self, x: u32, y: u32, value: &Vec3) {
         let (r, g, b) = ((value.x * 255.99) as u32, (value.y * 255.99) as u32, (value.z * 255.99) as u32);
-        let packed_value = (r << 16) | (g << 8) | b;
+        let packed_value = (b << 16) | (g << 8) | r;
 
         self.framebuffer_textures[self.texture_idx].set_pixel(x, y, packed_value);
     }
