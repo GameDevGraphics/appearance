@@ -68,6 +68,7 @@ impl<T: BLASPrimitive> BLAS<T> {
         }
     }
 
+    #[inline]
     pub fn primitives(&mut self) -> &mut Vec<T> {
         &mut self.primitives
     }
@@ -87,11 +88,11 @@ impl<T: BLASPrimitive> BLAS<T> {
 
         let timer = Timer::new();
         Self::subdivide(0, &mut self.nodes, &mut self.node_count, &self.primitives, &mut self.indices, &triangle_centroids, build_mode);
-        println!("BVH build in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
+        println!("BLAS build in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
     }
 
     pub fn refit(&mut self) {
-        assert_ne!(self.node_count, 0, "Failed to refit BVH.");
+        assert_ne!(self.node_count, 0, "Failed to refit BLAS.");
 
         let timer = Timer::new();
         for i in (0..self.node_count).rev() {
@@ -113,7 +114,7 @@ impl<T: BLASPrimitive> BLAS<T> {
 
             self.nodes[i].bounds = bounds_refitted;
         }
-        println!("BVH refit in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
+        println!("BLAS refit in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
     }
 
     fn best_split(
@@ -317,10 +318,13 @@ impl<T: BLASPrimitive> BLAS<T> {
 }
 
 impl BLASInstance {
-    pub fn new<T: BLASPrimitive>(inv_transform: Mat4, blas_idx: u32, blases: &[&BLAS<T>]) -> Self {
+    pub fn new<T: BLASPrimitive>(
+        transform: Mat4, inv_transform: Mat4,
+        blas_idx: u32, blases: &[&BLAS<T>]
+    ) -> Self {
         let mut bounds = AABB::default();
         for corner in blases[blas_idx as usize].nodes[0].bounds.corners() {
-            bounds.grow_vec3(&(inv_transform * Vec4::from((corner, 1.0))).xyz());
+            bounds.grow_vec3(&(transform * Vec4::from((corner, 1.0))).xyz());
         }
 
         BLASInstance {
@@ -330,12 +334,9 @@ impl BLASInstance {
         }
     }
 
-    pub fn centroid(&self) -> Vec3 {
-        self.bounds.centroid()
-    }
-
-    pub fn expand_aabb(&self, aabb: &mut AABB) {
-        aabb.grow_aabb(&self.bounds);
+    #[inline]
+    pub fn bounds(&self) -> &AABB {
+        &self.bounds
     }
 
     pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS<T>]) -> Option<Intersection> {
@@ -349,6 +350,7 @@ impl BLASInstance {
 }
 
 impl Default for Node {
+    #[inline]
     fn default() -> Self {
         Node {
             bounds: AABB::new(&Vec3::ZERO, &Vec3::ZERO),
@@ -359,6 +361,7 @@ impl Default for Node {
 }
 
 impl Node {
+    #[inline]
     pub fn is_leaf(&self) -> bool {
         self.prim_count != 0
     }

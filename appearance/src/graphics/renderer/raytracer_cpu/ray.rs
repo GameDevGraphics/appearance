@@ -174,11 +174,6 @@ impl AABB {
     }
 
     #[inline]
-    pub fn centroid(&self) -> Vec3 {
-        (*self.max() + *self.min()) * 0.5
-    }
-
-    #[inline]
     pub fn min(&self) -> &Vec3 {
         &self.bounds[0]
     }

@@ -110,6 +110,7 @@ impl private::Renderer for RaytracerCPU {
             for instance in instances {
                 let instance_transform = &mut self.mesh_instances.get_mut(instance).unwrap().transform;
                 blas_instances.push(BLASInstance::new(
+                    *instance_transform.get_model_matrix(),
                     *instance_transform.get_inv_model_matrix(),
                     blas_idx,
                     &blases
@@ -131,7 +132,7 @@ impl private::Renderer for RaytracerCPU {
                 if let Some(closest_hit) = tlas.intersect(&ray, 0.01, 100.0, &mut blases) {
                     let cold = Vec3::new(0.0, 1.0, 0.0);
                     let hot = Vec3::new(1.0, 0.0, 0.0);
-                    let t = (closest_hit.heat as f32 / 50.0).clamp(0.0, 1.0);
+                    let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
                     let color = cold.lerp(hot, t);
 
                     self.framebuffer.set_pixel(x, y, &color);
