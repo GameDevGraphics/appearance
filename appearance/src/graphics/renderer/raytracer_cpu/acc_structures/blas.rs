@@ -1,6 +1,40 @@
 use glam::*;
 use crate::Timer;
-use super::{Triangle, Ray, AABB, Intersection};
+use super::{Ray, AABB, Intersection};
+
+/*****************************************************************************
+*                               PUB STRUCTS
+******************************************************************************/
+
+#[allow(clippy::upper_case_acronyms)]
+pub struct BLAS<T: BLASPrimitive> {
+    nodes: Vec<Node>,
+    node_count: usize,
+    primitives: Vec<T>,
+    indices: Vec<usize>
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BLASBuildMode {
+    FastBuild,
+    FastTrace
+}
+
+pub trait BLASPrimitive {
+    fn centroid(&self) -> Vec3;
+    fn expand_aabb(&self, aabb: &mut AABB);
+    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection>;
+}
+
+pub struct BLASInstance {
+    inv_transform: Mat4,
+    bounds: AABB,
+    blas_idx: u32
+}
+
+/*****************************************************************************
+*                               PRIVATE STRUCTS
+******************************************************************************/
 
 #[derive(Clone, Copy, Debug)]
 struct Node {
@@ -9,134 +43,50 @@ struct Node {
     prim_count: u32
 }
 
-impl Default for Node {
-    fn default() -> Self {
-        Node {
-            bounds: AABB::new(&Vec3::ZERO, &Vec3::ZERO),
-            first_prim: 0,
-            prim_count: 0
-        }
-    }
-}
-
-impl Node {
-    pub fn is_leaf(&self) -> bool {
-        self.prim_count != 0
-    }
-
-    pub fn update_bounds<T: BVHPrimitive>(&mut self, triangles: &[T], indices: &[usize]) {
-        self.bounds = AABB::default();
-        for i in self.first_prim..(self.first_prim + self.prim_count) {
-            triangles[indices[i as usize]].expand_aabb(&mut self.bounds);
-        }
-    }
-}
-
-#[allow(clippy::upper_case_acronyms)]
-pub type BLAS = BVH<Triangle, false>;
-#[allow(clippy::upper_case_acronyms)]
-pub type TLAS = BVH<BLASInstace, true>;
-
-pub trait BVHPrimitive {
-    fn centroid(&self) -> Vec3;
-    fn expand_aabb(&self, aabb: &mut AABB);
-    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS]) -> Option<Intersection>;
-}
-
-pub struct BLASInstace {
-    inv_transform: Mat4,
-    bounds: AABB,
-    blas_idx: u32
-}
-
-impl BLASInstace {
-    pub fn new(inv_transform: Mat4, blas_idx: u32, blases: &[&BLAS]) -> Self {
-        let mut bounds = AABB::default();
-        for corner in blases[blas_idx as usize].nodes[0].bounds.corners() {
-            bounds.grow_vec3(&(inv_transform * Vec4::from((corner, 1.0))).xyz());
-        }
-
-        BLASInstace {
-            inv_transform,
-            bounds,
-            blas_idx
-        }
-    }
-}
-
-impl BVHPrimitive for BLASInstace {
-    fn centroid(&self) -> Vec3 {
-        self.bounds.centroid()
-    }
-
-    fn expand_aabb(&self, aabb: &mut AABB) {
-        aabb.grow_aabb(&self.bounds);
-    }
-
-    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS]) -> Option<Intersection> {
-        let transformed_ray = Ray::new(
-            &(self.inv_transform * Vec4::from((*ray.origin(), 1.0))).xyz(),
-            &(self.inv_transform * Vec4::from((*ray.direction(), 0.0))).xyz()
-        );
-
-        blases[self.blas_idx as usize].intersect(&transformed_ray, tmin, tmax, &mut[])
-    }
-}
-
-#[allow(clippy::upper_case_acronyms)]
-pub struct BVH<T: BVHPrimitive, const U: bool> {
-    nodes: Vec<Node>,
-    node_count: usize,
-    triangles: Vec<T>,
-    indices: Vec<usize>
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum BVHBuildMode {
-    FastBuild,
-    FastTrace
-}
-
 #[derive(Clone, Copy, Debug, Default)]
 struct Bin {
     bounds: AABB,
     prim_count: u32
 }
 
-impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
-    pub fn new(triangles: Vec<T>) -> Self {
-        let mut indices = Vec::with_capacity(triangles.len());
-        for i in 0..triangles.len() {
+/*****************************************************************************
+*                               IMPLEMENTATIONS
+******************************************************************************/
+
+impl<T: BLASPrimitive> BLAS<T> {
+    pub fn new(primitives: Vec<T>) -> Self {
+        let mut indices = Vec::with_capacity(primitives.len());
+        for i in 0..primitives.len() {
             indices.push(i);
         }
 
-        BVH {
+        BLAS {
             nodes: vec![],
             node_count: 0,
-            triangles,
+            primitives,
             indices
         }
     }
 
     pub fn primitives(&mut self) -> &mut Vec<T> {
-        &mut self.triangles
+        &mut self.primitives
     }
 
-    pub fn rebuild(&mut self, build_mode: BVHBuildMode) {
-        let mut triangle_centroids = Vec::with_capacity(self.triangles.len());
-        for triangle in &self.triangles {
+    pub fn rebuild(&mut self, build_mode: BLASBuildMode) {
+        let mut triangle_centroids = Vec::with_capacity(self.primitives.len());
+        for triangle in &self.primitives {
             triangle_centroids.push(triangle.centroid());
         }
 
-        self.nodes = vec![Node::default(); self.triangles.len() * 2 - 1];
+        self.nodes = vec![Node::default(); self.primitives.len() * 2 - 1];
         self.node_count = 1;
         let root_node = &mut self.nodes[0];
         root_node.first_prim = 0;
-        root_node.prim_count = self.triangles.len() as u32;
-        root_node.update_bounds(&self.triangles, &self.indices);
+        root_node.prim_count = self.primitives.len() as u32;
+        root_node.update_bounds(&self.primitives, &self.indices);
 
         let timer = Timer::new();
-        Self::subdivide(0, &mut self.nodes, &mut self.node_count, &self.triangles, &mut self.indices, &triangle_centroids, build_mode);
+        Self::subdivide(0, &mut self.nodes, &mut self.node_count, &self.primitives, &mut self.indices, &triangle_centroids, build_mode);
         println!("BVH build in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
     }
 
@@ -148,7 +98,7 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
             let first_prim; {
                 let node = &mut self.nodes[i];
                 if node.is_leaf() {
-                    node.update_bounds(&self.triangles, &self.indices);
+                    node.update_bounds(&self.primitives, &self.indices);
                     continue;
                 }
                 first_prim = node.first_prim;
@@ -167,8 +117,8 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
     }
 
     fn best_split(
-        node: &Node, build_mode: BVHBuildMode,
-        triangles: &[T], indices: &[usize], triangle_centroids: &[Vec3]
+        node: &Node, build_mode: BLASBuildMode,
+        primitives: &[T], indices: &[usize], triangle_centroids: &[Vec3]
     ) -> (usize, f32, f32) {
         let mut tight_bounds = AABB::default();
         for i in node.first_prim..(node.first_prim + node.prim_count) {
@@ -181,8 +131,8 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
         let mut best_cost = f32::MAX;
 
         let bin_count = match build_mode {
-            BVHBuildMode::FastBuild => 8,
-            BVHBuildMode::FastTrace => 32
+            BLASBuildMode::FastBuild => 8,
+            BLASBuildMode::FastTrace => 32
         };
 
         for axis in 0..3 {
@@ -193,7 +143,7 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
             let inv_scale = bin_count as f32 / extent[axis];
 
             for i in node.first_prim..(node.first_prim + node.prim_count) {
-                let triangle = &triangles[indices[i as usize]];
+                let triangle = &primitives[indices[i as usize]];
                 let centroid = &triangle_centroids[indices[i as usize]];
 
                 let bin_idx = (bin_count - 1).min(
@@ -240,8 +190,8 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
 
     fn subdivide(
         idx: usize, nodes: &mut Vec<Node>, node_count: &mut usize,
-        triangles: &[T], indices: &mut Vec<usize>, triangle_centroids: &[Vec3],
-        build_mode: BVHBuildMode
+        primitives: &[T], indices: &mut Vec<usize>, triangle_centroids: &[Vec3],
+        build_mode: BLASBuildMode
     ) {
         let (mut i, left_count, first_prim, prim_count, lchild); {
             let node = &mut nodes[idx];
@@ -253,7 +203,7 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
             let (axis, cost, split_pos) = Self::best_split(
                 node,
                 build_mode,
-                triangles,
+                primitives,
                 indices,
                 triangle_centroids
             );
@@ -262,7 +212,7 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
                 return;
             }
             
-            // Sort triangles by plane
+            // Sort primitives by plane
             i = node.first_prim as i32;
             let mut j = i + node.prim_count as i32 - 1;
             while i <= j {
@@ -293,13 +243,13 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
         nodes[lchild + 1].first_prim = i as u32;
         nodes[lchild + 1].prim_count = prim_count - left_count as u32;
 
-        nodes[lchild].update_bounds(triangles, indices);
-        nodes[lchild + 1].update_bounds(triangles, indices);
-        Self::subdivide(lchild, nodes, node_count, triangles, indices, triangle_centroids, build_mode);
-        Self::subdivide(lchild + 1, nodes, node_count, triangles, indices, triangle_centroids, build_mode);
+        nodes[lchild].update_bounds(primitives, indices);
+        nodes[lchild + 1].update_bounds(primitives, indices);
+        Self::subdivide(lchild, nodes, node_count, primitives, indices, triangle_centroids, build_mode);
+        Self::subdivide(lchild + 1, nodes, node_count, primitives, indices, triangle_centroids, build_mode);
     }
 
-    pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS]) -> Option<Intersection> {
+    pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
         let mut closest: Option<Intersection> = None;
         let mut stack: [Option<&Node>; 64] = [None; 64];
         let mut stack_idx = 0;
@@ -311,7 +261,7 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
             heat += 1;
             if node.is_leaf() {
                 for i in node.first_prim..(node.first_prim + node.prim_count) {
-                    if let Some(hit) = self.triangles[self.indices[i as usize]].intersect(ray, tmin, tmax, blases) {
+                    if let Some(hit) = self.primitives[self.indices[i as usize]].intersect(ray, tmin, tmax) {
                         if let Some(closest_value) = &closest {
                             if hit.t < closest_value.t {
                                 closest = Some(hit);
@@ -363,5 +313,60 @@ impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
         }
 
         closest
+    }
+}
+
+impl BLASInstance {
+    pub fn new<T: BLASPrimitive>(inv_transform: Mat4, blas_idx: u32, blases: &[&BLAS<T>]) -> Self {
+        let mut bounds = AABB::default();
+        for corner in blases[blas_idx as usize].nodes[0].bounds.corners() {
+            bounds.grow_vec3(&(inv_transform * Vec4::from((corner, 1.0))).xyz());
+        }
+
+        BLASInstance {
+            inv_transform,
+            bounds,
+            blas_idx
+        }
+    }
+
+    pub fn centroid(&self) -> Vec3 {
+        self.bounds.centroid()
+    }
+
+    pub fn expand_aabb(&self, aabb: &mut AABB) {
+        aabb.grow_aabb(&self.bounds);
+    }
+
+    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS<T>]) -> Option<Intersection> {
+        let transformed_ray = Ray::new(
+            &(self.inv_transform * Vec4::from((*ray.origin(), 1.0))).xyz(),
+            &(self.inv_transform * Vec4::from((*ray.direction(), 0.0))).xyz()
+        );
+
+        blases[self.blas_idx as usize].intersect(&transformed_ray, tmin, tmax)
+    }
+}
+
+impl Default for Node {
+    fn default() -> Self {
+        Node {
+            bounds: AABB::new(&Vec3::ZERO, &Vec3::ZERO),
+            first_prim: 0,
+            prim_count: 0
+        }
+    }
+}
+
+impl Node {
+    pub fn is_leaf(&self) -> bool {
+        self.prim_count != 0
+    }
+
+    pub fn update_bounds<T: BLASPrimitive>(&mut self, primitives: &[T], indices: &[usize]) {
+        self.bounds = AABB::default();
+        for i in self.first_prim..(self.first_prim + self.prim_count) {
+            primitives[indices[i as usize]].expand_aabb(&mut self.bounds);
+        }
     }
 }

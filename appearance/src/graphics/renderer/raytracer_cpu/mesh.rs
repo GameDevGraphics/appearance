@@ -1,9 +1,9 @@
 use crate::Timer;
 
-use super::{Triangle, BLAS, BVH, BVHBuildMode};
+use super::{Triangle, BLAS, BLASBuildMode};
 
 pub struct Mesh {
-    blas: BLAS,
+    blas: BLAS<Triangle>,
     timer: Timer,
     triangles_original: Vec<Triangle>
 }
@@ -19,8 +19,8 @@ impl Mesh {
             ))
         }
 
-        let mut blas = BVH::new(triangles.clone());
-        blas.rebuild(BVHBuildMode::FastTrace);
+        let mut blas = BLAS::new(triangles.clone());
+        blas.rebuild(BLASBuildMode::FastTrace);
 
         Mesh {
             blas,
@@ -29,7 +29,7 @@ impl Mesh {
         }
     }
     
-    pub fn blas(&self) -> &BLAS {
+    pub fn blas(&self) -> &BLAS<Triangle> {
         &self.blas
     }
 

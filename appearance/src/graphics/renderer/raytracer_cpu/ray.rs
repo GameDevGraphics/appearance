@@ -1,5 +1,5 @@
 use glam::*;
-use super::bvh::{BLAS, BVHPrimitive};
+use super::acc_structures::BLASPrimitive;
 
 #[derive(Clone, Debug)]
 pub struct Ray {
@@ -63,7 +63,7 @@ impl Triangle {
     }
 }
 
-impl BVHPrimitive for Triangle {
+impl BLASPrimitive for Triangle {
     #[inline]
     fn centroid(&self) -> Vec3 {
         (self.p0 + self.p1 + self.p2) * 0.33333333
@@ -75,7 +75,7 @@ impl BVHPrimitive for Triangle {
     }
 
     #[allow(clippy::manual_range_contains)]
-    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32, _blases: &mut [&BLAS]) -> Option<Intersection> {
+    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
         let edge1 = self.p1 - self.p0;
         let edge2 = self.p2 - self.p0;
         let pvec = ray.direction.cross(edge2);

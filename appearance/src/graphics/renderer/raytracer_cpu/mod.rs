@@ -11,8 +11,8 @@ mod ray;
 use ray::*;
 mod mesh;
 use mesh::*;
-mod bvh;
-use bvh::*;
+mod acc_structures;
+use acc_structures::*;
 
 pub struct RaytracerCPU {
     framebuffer: Framebuffer,
@@ -109,7 +109,7 @@ impl private::Renderer for RaytracerCPU {
             
             for instance in instances {
                 let instance_transform = &mut self.mesh_instances.get_mut(instance).unwrap().transform;
-                blas_instances.push(BLASInstace::new(
+                blas_instances.push(BLASInstance::new(
                     *instance_transform.get_inv_model_matrix(),
                     blas_idx,
                     &blases
@@ -117,7 +117,7 @@ impl private::Renderer for RaytracerCPU {
             }
         }
         let mut tlas = TLAS::new(blas_instances);
-        tlas.rebuild(BVHBuildMode::FastBuild);
+        tlas.rebuild();
 
         for x in 0..width {
             for y in 0..height {
@@ -128,35 +128,13 @@ impl private::Renderer for RaytracerCPU {
 
                 let ray = Ray::new(&origin.xyz(), &direction.xyz());
 
-                // let mut closest_hit: Option<Intersection> = None;
-
-                // for mesh in &mut self.meshes {
-                //     let instances = &mesh.1.1;
-                //     let mesh = &mut mesh.1.0;
-                    
-                //     for instance in instances {
-                //         let instance_transform = &self.mesh_instances.get(instance).unwrap().transform;
-                //         let instance_ray = Ray::new(&(*ray.origin() - *instance_transform.get_position()), ray.direction());
-
-                //         if let Some(hit) = mesh.intersect(&instance_ray, 0.01, 100.0) {
-                //             if let Some(closest) = &closest_hit {
-                //                 if hit.t < closest.t {
-                //                     closest_hit = Some(hit);
-                //                 }
-                //             } else {
-                //                 closest_hit = Some(hit);
-                //             }
-                //         }
-                //     }
-                // }
-
                 if let Some(closest_hit) = tlas.intersect(&ray, 0.01, 100.0, &mut blases) {
                     let cold = Vec3::new(0.0, 1.0, 0.0);
                     let hot = Vec3::new(1.0, 0.0, 0.0);
                     let t = (closest_hit.heat as f32 / 50.0).clamp(0.0, 1.0);
                     let color = cold.lerp(hot, t);
 
-                    self.framebuffer.set_pixel(x, y, &color);//&Vec3::new(1.0, 1.0, hit.t * 0.2));
+                    self.framebuffer.set_pixel(x, y, &color);
                 } else {
                     self.framebuffer.set_pixel(x, y, &Vec3::new(0.0, 0.0, 0.0));
                 }
