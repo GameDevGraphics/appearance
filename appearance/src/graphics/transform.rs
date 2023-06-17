@@ -8,6 +8,7 @@ pub struct Transform {
 
     dirty: bool,
     model_matrix: Mat4,
+    inv_model_matrix: Mat4,
     inv_trans_model_matrix: Mat4
 }
 
@@ -25,6 +26,7 @@ impl Transform {
             scale: Vec3::ONE,
             dirty: true,
             model_matrix: Mat4::IDENTITY,
+            inv_model_matrix: Mat4::IDENTITY,
             inv_trans_model_matrix: Mat4::IDENTITY
         }
     }
@@ -60,13 +62,19 @@ impl Transform {
         if self.dirty {
             self.dirty = false;
             self.model_matrix = Mat4::from_translation(self.position) * Mat4::from_quat(self.rotation) * Mat4::from_scale(self.scale);
-            self.inv_trans_model_matrix = self.model_matrix.inverse().transpose();
+            self.inv_model_matrix = self.model_matrix.inverse();
+            self.inv_trans_model_matrix = self.inv_model_matrix.transpose();
         }
     }
 
     pub fn get_model_matrix(&mut self) -> &Mat4 {
         self.recalculate_matrices();
         &self.model_matrix
+    }
+
+    pub fn get_inv_model_matrix(&mut self) -> &Mat4 {
+        self.recalculate_matrices();
+        &self.inv_model_matrix
     }
 
     pub fn get_inv_trans_model_matrix(&mut self) -> &Mat4 {

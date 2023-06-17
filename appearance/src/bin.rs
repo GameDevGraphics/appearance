@@ -83,7 +83,7 @@ fn update(app: &mut AppState<GameState>) {
         helmet_renderer.transform.set_rotation(
             &Quat::from_axis_angle(
                 Vec3::new(0.0, 1.0, 0.0),
-                (time).to_radians()
+                (time * 15.0).to_radians()
             )
         );
     }

@@ -1,4 +1,5 @@
 use glam::*;
+use super::bvh::{BLAS, BVHPrimitive};
 
 #[derive(Clone, Debug)]
 pub struct Ray {
@@ -60,31 +61,28 @@ impl Triangle {
             p2: *p2
         }
     }
+}
 
+impl BVHPrimitive for Triangle {
     #[inline]
-    pub fn min(&self) -> Vec3 {
-        self.p0.min(self.p1.min(self.p2))
-    }
-
-    #[inline]
-    pub fn max(&self) -> Vec3 {
-        self.p0.max(self.p1.max(self.p2))
-    }
-
-    #[inline]
-    pub fn centroid(&self) -> Vec3 {
+    fn centroid(&self) -> Vec3 {
         (self.p0 + self.p1 + self.p2) * 0.33333333
     }
 
+    #[inline]
+    fn expand_aabb(&self, aabb: &mut AABB) {
+        aabb.grow_triangle(self);
+    }
+
     #[allow(clippy::manual_range_contains)]
-    pub fn intersect(&self, ray: &Ray, cull: bool, tmin: f32, tmax: f32) -> Option<Intersection> {
+    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32, _blases: &mut [&BLAS]) -> Option<Intersection> {
         let edge1 = self.p1 - self.p0;
         let edge2 = self.p2 - self.p0;
         let pvec = ray.direction.cross(edge2);
         let det = edge1.dot(pvec);
 
         let (mut t, mut u, mut v);
-        if cull {
+        if false {
             if det < 0.00000001 {
                 return None;
             }
@@ -176,6 +174,11 @@ impl AABB {
     }
 
     #[inline]
+    pub fn centroid(&self) -> Vec3 {
+        (*self.max() + *self.min()) * 0.5
+    }
+
+    #[inline]
     pub fn min(&self) -> &Vec3 {
         &self.bounds[0]
     }
@@ -189,6 +192,21 @@ impl AABB {
     pub fn surface_area(&self) -> f32 {
         let extent = self.extent();
         extent.x * extent.y + extent.y * extent.z + extent.z * extent.x
+    }
+
+    #[inline]
+    pub fn corners(&self) -> [Vec3; 8] {
+        [
+            Vec3::new(self.min().x, self.min().y, self.min().z),
+            Vec3::new(self.max().x, self.min().y, self.min().z),
+            Vec3::new(self.max().x, self.min().y, self.max().z),
+            Vec3::new(self.min().x, self.min().y, self.max().z),
+
+            Vec3::new(self.min().x, self.max().y, self.min().z),
+            Vec3::new(self.max().x, self.max().y, self.min().z),
+            Vec3::new(self.max().x, self.max().y, self.max().z),
+            Vec3::new(self.min().x, self.max().y, self.max().z)
+        ]
     }
 
     pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {

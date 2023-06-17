@@ -24,29 +24,70 @@ impl Node {
         self.prim_count != 0
     }
 
-    pub fn update_bounds(&mut self, triangles: &[Triangle], indices: &[usize]) {
-        let mut min = Vec3::splat(f32::MAX);
-        let mut max = Vec3::splat(f32::MIN);
+    pub fn update_bounds<T: BVHPrimitive>(&mut self, triangles: &[T], indices: &[usize]) {
+        self.bounds = AABB::default();
         for i in self.first_prim..(self.first_prim + self.prim_count) {
-            let triangle = &triangles[indices[i as usize]];
-            min = min.min(triangle.min());
-            max = max.max(triangle.max());
+            triangles[indices[i as usize]].expand_aabb(&mut self.bounds);
         }
-        self.bounds = AABB::new(&min, &max);
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct Bin {
+#[allow(clippy::upper_case_acronyms)]
+pub type BLAS = BVH<Triangle, false>;
+#[allow(clippy::upper_case_acronyms)]
+pub type TLAS = BVH<BLASInstace, true>;
+
+pub trait BVHPrimitive {
+    fn centroid(&self) -> Vec3;
+    fn expand_aabb(&self, aabb: &mut AABB);
+    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS]) -> Option<Intersection>;
+}
+
+pub struct BLASInstace {
+    inv_transform: Mat4,
     bounds: AABB,
-    prim_count: u32
+    blas_idx: u32
+}
+
+impl BLASInstace {
+    pub fn new(inv_transform: Mat4, blas_idx: u32, blases: &[&BLAS]) -> Self {
+        let mut bounds = AABB::default();
+        for corner in blases[blas_idx as usize].nodes[0].bounds.corners() {
+            bounds.grow_vec3(&(inv_transform * Vec4::from((corner, 1.0))).xyz());
+        }
+
+        BLASInstace {
+            inv_transform,
+            bounds,
+            blas_idx
+        }
+    }
+}
+
+impl BVHPrimitive for BLASInstace {
+    fn centroid(&self) -> Vec3 {
+        self.bounds.centroid()
+    }
+
+    fn expand_aabb(&self, aabb: &mut AABB) {
+        aabb.grow_aabb(&self.bounds);
+    }
+
+    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS]) -> Option<Intersection> {
+        let transformed_ray = Ray::new(
+            &(self.inv_transform * Vec4::from((*ray.origin(), 1.0))).xyz(),
+            &(self.inv_transform * Vec4::from((*ray.direction(), 0.0))).xyz()
+        );
+
+        blases[self.blas_idx as usize].intersect(&transformed_ray, tmin, tmax, &mut[])
+    }
 }
 
 #[allow(clippy::upper_case_acronyms)]
-pub struct BVH {
+pub struct BVH<T: BVHPrimitive, const U: bool> {
     nodes: Vec<Node>,
     node_count: usize,
-    triangles: Vec<Triangle>,
+    triangles: Vec<T>,
     indices: Vec<usize>
 }
 
@@ -56,8 +97,14 @@ pub enum BVHBuildMode {
     FastTrace
 }
 
-impl BVH {
-    pub fn new(triangles: Vec<Triangle>) -> Self {
+#[derive(Clone, Copy, Debug, Default)]
+struct Bin {
+    bounds: AABB,
+    prim_count: u32
+}
+
+impl<T: BVHPrimitive, const U: bool> BVH<T, U> {
+    pub fn new(triangles: Vec<T>) -> Self {
         let mut indices = Vec::with_capacity(triangles.len());
         for i in 0..triangles.len() {
             indices.push(i);
@@ -71,7 +118,7 @@ impl BVH {
         }
     }
 
-    pub fn triangles(&mut self) -> &mut Vec<Triangle> {
+    pub fn primitives(&mut self) -> &mut Vec<T> {
         &mut self.triangles
     }
 
@@ -121,7 +168,7 @@ impl BVH {
 
     fn best_split(
         node: &Node, build_mode: BVHBuildMode,
-        triangles: &[Triangle], indices: &[usize], triangle_centroids: &[Vec3]
+        triangles: &[T], indices: &[usize], triangle_centroids: &[Vec3]
     ) -> (usize, f32, f32) {
         let mut tight_bounds = AABB::default();
         for i in node.first_prim..(node.first_prim + node.prim_count) {
@@ -153,7 +200,7 @@ impl BVH {
                     ((centroid[axis] - tight_bounds.min()[axis]) * inv_scale) as i32
                 ) as usize;
                 bin[bin_idx].prim_count += 1;
-                bin[bin_idx].bounds.grow_triangle(triangle);
+                triangle.expand_aabb(&mut bin[bin_idx].bounds);
             }
 
             let mut left_area   = [0.0; 32 - 1];
@@ -193,7 +240,7 @@ impl BVH {
 
     fn subdivide(
         idx: usize, nodes: &mut Vec<Node>, node_count: &mut usize,
-        triangles: &[Triangle], indices: &mut Vec<usize>, triangle_centroids: &[Vec3],
+        triangles: &[T], indices: &mut Vec<usize>, triangle_centroids: &[Vec3],
         build_mode: BVHBuildMode
     ) {
         let (mut i, left_count, first_prim, prim_count, lchild); {
@@ -210,7 +257,6 @@ impl BVH {
                 indices,
                 triangle_centroids
             );
-
             let parent_cost = node.prim_count as f32 * node.bounds.surface_area();
             if parent_cost < cost {
                 return;
@@ -253,7 +299,7 @@ impl BVH {
         Self::subdivide(lchild + 1, nodes, node_count, triangles, indices, triangle_centroids, build_mode);
     }
 
-    pub fn intersect(&mut self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
+    pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS]) -> Option<Intersection> {
         let mut closest: Option<Intersection> = None;
         let mut stack: [Option<&Node>; 64] = [None; 64];
         let mut stack_idx = 0;
@@ -265,7 +311,7 @@ impl BVH {
             heat += 1;
             if node.is_leaf() {
                 for i in node.first_prim..(node.first_prim + node.prim_count) {
-                    if let Some(hit) = self.triangles[self.indices[i as usize]].intersect(ray, false, tmin, tmax) {
+                    if let Some(hit) = self.triangles[self.indices[i as usize]].intersect(ray, tmin, tmax, blases) {
                         if let Some(closest_value) = &closest {
                             if hit.t < closest_value.t {
                                 closest = Some(hit);

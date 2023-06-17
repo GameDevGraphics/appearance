@@ -1,9 +1,9 @@
 use crate::Timer;
 
-use super::{Ray, Triangle, Intersection, BVH, BVHBuildMode};
+use super::{Triangle, BLAS, BVH, BVHBuildMode};
 
 pub struct Mesh {
-    bvh: BVH,
+    blas: BLAS,
     timer: Timer,
     triangles_original: Vec<Triangle>
 }
@@ -19,19 +19,23 @@ impl Mesh {
             ))
         }
 
-        let mut bvh = BVH::new(triangles.clone());
-        bvh.rebuild(BVHBuildMode::FastTrace);
+        let mut blas = BVH::new(triangles.clone());
+        blas.rebuild(BVHBuildMode::FastTrace);
 
         Mesh {
-            bvh,
+            blas,
             timer: Timer::new(),
             triangles_original: triangles
         }
     }
+    
+    pub fn blas(&self) -> &BLAS {
+        &self.blas
+    }
 
     pub fn animate(&mut self) {
         let time = self.timer.elapsed() as f32;
-        let triangles = self.bvh.triangles();
+        let triangles = self.blas.primitives();
 
         for (i, triangle) in triangles.iter_mut().enumerate() {
             triangle.p0.y = self.triangles_original[i].p0.y + self.triangles_original[i].p0.y * (time).sin() * 0.1;
@@ -39,10 +43,6 @@ impl Mesh {
             triangle.p2.y = self.triangles_original[i].p2.y + self.triangles_original[i].p2.y * (time).sin() * 0.1;
         }
 
-        self.bvh.refit();
-    }
-
-    pub fn intersect(&mut self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
-        self.bvh.intersect(ray, tmin, tmax)
+        self.blas.refit();
     }
 }
