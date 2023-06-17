@@ -1,4 +1,8 @@
 use glam::*;
+use uuid::Uuid;
+
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 use std::rc::Rc;
 use super::Image;
 
@@ -75,7 +79,42 @@ pub struct Mesh {
     pub min: Vec3,
     pub max: Vec3,
 
-    pub material_idx: usize
+    pub material_idx: usize,
+    id: Uuid
+}
+
+impl Mesh {
+    pub fn new(
+        vertices: Vec<Vertex>,
+        indices: Vec<u32>,
+        min: Vec3, max: Vec3,
+        material_idx: usize
+    ) -> Self {
+        Mesh {
+            vertices,
+            indices,
+            min,
+            max,
+            material_idx,
+            id: Uuid::new_v4()
+        }
+    }
+
+    pub fn get_id(&self) -> Uuid {
+        self.id
+    }
+}
+
+impl PartialEq for Mesh {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Hash for Mesh {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -247,13 +247,13 @@ impl Resources {
                         }
                     }
 
-                    node_mesh = Some(Mesh {
+                    node_mesh = Some(Mesh::new(
                         vertices,
                         indices,
                         min,
                         max,
                         material_idx
-                    });
+                    ));
                 }
             }
         };

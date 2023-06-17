@@ -250,4 +250,14 @@ impl Ray {
             signs
         }
     }
+
+    #[inline]
+    pub fn origin(&self) -> &Vec3 {
+        &self.origin
+    }
+
+    #[inline]
+    pub fn direction(&self) -> &Vec3 {
+        &self.direction
+    }
 }

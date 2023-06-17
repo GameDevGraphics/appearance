@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use appearance::*;
 use glam::*;
 
@@ -7,23 +9,46 @@ fn main() {
 }
 
 struct GameState {
-    timer: Timer
+    helmet_ids: Vec<Rc<MeshRendererID>>,
+    timer: Timer,
+    delta_timer: Timer
 }
 
 fn init(resources: &mut Resources, graphics: &mut Graphics) -> GameState {
     let helmet_model = resources.get_model("assets/models/DamagedHelmet/glTF/DamagedHelmet.gltf");
-    graphics.add_model(helmet_model);
+
+    let mut helmet_ids = Vec::new();
+    for x in 0..2 {
+        for y in 0..2 {
+            for z in 0..2 {
+                let mut transform = Transform::new();
+                transform.set_position(&Vec3::new(x as f32 * 2.0, y as f32 * 2.0, z as f32 * 2.0));
+
+                let helmet_id = graphics.add_mesh(
+                    helmet_model.root_nodes[0].mesh.as_ref().unwrap(),
+                    Some(transform)
+                );
+                helmet_ids.push(helmet_id);
+            }
+        }
+    }
+    
 
     GameState {
-        timer: Timer::new()
+        helmet_ids,
+        timer: Timer::new(),
+        delta_timer: Timer::new()
     }
 }
 
 fn update(app: &mut AppState<GameState>) {
-    let dt = app.user_state.timer.elapsed() as f32;
+    // FPS Counter
+    let dt = app.user_state.delta_timer.elapsed() as f32;
+    let time = app.user_state.timer.elapsed() as f32;
     println!("FPS: {}", 1.0 / dt);
-    app.user_state.timer.reset();
+    app.user_state.delta_timer.reset();
 
+    // Camera controller
     let camera = app.graphics.camera();
     let mut dir = Vec3::ZERO;
     if app.input.key(VirtualKeyCode::W) {
@@ -46,4 +71,20 @@ fn update(app: &mut AppState<GameState>) {
     }
     let pos = *camera.get_position() + dir * dt * 1.0;
     camera.set_position(&pos);
+
+    // Remove first helmet
+    if app.input.key_down(VirtualKeyCode::Space) {
+        app.user_state.helmet_ids.remove(0);
+    }
+
+    // Spin all helmets
+    for helmet_id in &app.user_state.helmet_ids {
+        let helmet_renderer = app.graphics.mesh_renderer(helmet_id.clone());
+        helmet_renderer.transform.set_rotation(
+            &Quat::from_axis_angle(
+                Vec3::new(0.0, 1.0, 0.0),
+                (time).to_radians()
+            )
+        );
+    }
 }

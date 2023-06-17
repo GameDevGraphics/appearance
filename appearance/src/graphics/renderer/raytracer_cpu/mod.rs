@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use uuid::Uuid;
+
 use glam::*;
 use super::*;
 use crate::{Window, Camera};
@@ -13,24 +16,70 @@ use acceleration_structure::*;
 
 pub struct RaytracerCPU {
     framebuffer: Framebuffer,
-    meshes: Vec<Mesh>
+
+    mesh_handles: HandleQueue<MeshRendererID>,                  // Handle queue to hand out handles
+    mesh_instances: HashMap<Rc<MeshRendererID>, MeshRenderer>,  // Every handle pointing to its instance
+    meshes: HashMap<Uuid, (Mesh, Vec<Rc<MeshRendererID>>)>      // Every mesh id with all its instances
 }
 
 impl RaytracerCPU {
-    pub fn new(window: &Window) -> Self {
+    pub(crate) fn new(window: &Window) -> Self {
         gl_helper::gl_init(window.internal_context());
         let framebuffer = Framebuffer::new(window.get_width(), window.get_height());
 
         RaytracerCPU {
             framebuffer,
-            meshes: Vec::new()
+            mesh_handles: HandleQueue::new(100_000),
+            mesh_instances: HashMap::new(),
+            meshes: HashMap::new(),
+        }
+    }
+
+    fn update(&mut self) {
+        let mut mesh_ids_to_remove = Vec::new();
+        for mesh in &self.mesh_instances {
+            if Rc::strong_count(mesh.0) <= 2 {
+                mesh_ids_to_remove.push((
+                    mesh.0.clone(), mesh.1.get_id()
+                ));
+            }
+        }
+        for mesh_id in mesh_ids_to_remove {
+            self.mesh_instances.remove(&mesh_id.0);
+            let meshes = &mut self.meshes.get_mut(&mesh_id.1).unwrap().1;
+            meshes.remove(meshes.iter().position(|x| *x == mesh_id.0).unwrap());
+
+            self.mesh_handles.push(*mesh_id.0.as_ref());
         }
     }
 }
 
 impl Renderer for RaytracerCPU {
-    fn add_model(&mut self, model: Rc<Model>) {
-        self.meshes.push(Mesh::new(model.root_nodes[0].mesh.as_ref().unwrap()));
+    fn add_mesh(&mut self, mesh: &crate::Mesh) -> Rc<MeshRendererID> {
+        // Add mesh if this is the first instance
+        let mesh_renderer_ids = match self.meshes.get_mut(&mesh.get_id()) {
+            Some(mesh_renderer_ids) => {
+                mesh_renderer_ids
+            },
+            None => {
+                let mesh_internal = Mesh::new(mesh);
+                self.meshes.insert(mesh.get_id(), (mesh_internal, vec![]));
+                self.meshes.get_mut(&mesh.get_id()).unwrap()
+            }
+        };
+
+        // Add mesh renderer instance to the mesh
+        let mesh_id = Rc::new(self.mesh_handles.pop());
+        let mesh_renderer = MeshRenderer::new(mesh.get_id());
+        mesh_renderer_ids.1.push(mesh_id.clone());
+        self.mesh_instances.insert(mesh_id.clone(), mesh_renderer);
+        
+        mesh_id
+    }
+
+    fn mesh_renderer(&mut self, id: Rc<MeshRendererID>) -> &mut MeshRenderer {
+        self.mesh_instances.get_mut(&id)
+            .expect("Failed to get mesh renderer.")
     }
 }
 
@@ -40,12 +89,17 @@ impl private::Renderer for RaytracerCPU {
     }
 
     fn render(&mut self, window: &Window, camera: &mut Camera) {
+        self.update();
+
         let width = self.framebuffer.width();
         let height = self.framebuffer.height();
 
         let origin = *camera.view_inv_matrix() * Vec4::new(0.0, 0.0, 0.0, 1.0);
 
-        self.meshes[0].animate();
+        for mesh in &mut self.meshes {
+            let mesh = &mut mesh.1.0;
+            mesh.animate();
+        }
 
         for x in 0..width {
             for y in 0..height {
@@ -56,10 +110,32 @@ impl private::Renderer for RaytracerCPU {
 
                 let ray = Ray::new(&origin.xyz(), &direction.xyz());
 
-                if let Some(hit) = self.meshes[0].intersect(&ray, 0.01, 100.0) {
+                let mut closest_hit: Option<Intersection> = None;
+
+                for mesh in &mut self.meshes {
+                    let instances = &mesh.1.1;
+                    let mesh = &mut mesh.1.0;
+                    
+                    for instance in instances {
+                        let instance_transform = &self.mesh_instances.get(instance).unwrap().transform;
+                        let instance_ray = Ray::new(&(*ray.origin() - *instance_transform.get_position()), ray.direction());
+
+                        if let Some(hit) = mesh.intersect(&instance_ray, 0.01, 100.0) {
+                            if let Some(closest) = &closest_hit {
+                                if hit.t < closest.t {
+                                    closest_hit = Some(hit);
+                                }
+                            } else {
+                                closest_hit = Some(hit);
+                            }
+                        }
+                    }
+                }
+
+                if let Some(closest_hit) = closest_hit {
                     let cold = Vec3::new(0.0, 1.0, 0.0);
                     let hot = Vec3::new(1.0, 0.0, 0.0);
-                    let t = (hit.heat as f32 / 50.0).clamp(0.0, 1.0);
+                    let t = (closest_hit.heat as f32 / 50.0).clamp(0.0, 1.0);
                     let color = cold.lerp(hot, t);
 
                     self.framebuffer.set_pixel(x, y, &color);//&Vec3::new(1.0, 1.0, hit.t * 0.2));

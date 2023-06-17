@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use crate::Model;
+use crate::Mesh;
 
 use glam::*;
 
@@ -7,6 +7,8 @@ pub mod window;
 pub use window::*;
 pub mod camera;
 pub use camera::*;
+pub mod transform;
+pub use transform::*;
 pub mod renderer;
 pub use renderer::*;
 
@@ -49,7 +51,15 @@ impl Graphics {
         &mut self.camera
     }
 
-    pub fn add_model(&mut self, model: Rc<Model>) {
-        self.renderer.add_model(model);
+    pub fn add_mesh(&mut self, mesh: &Mesh, transform: Option<Transform>) -> Rc<MeshRendererID> {
+        let id = self.renderer.add_mesh(mesh);
+        if let Some(transform) = transform {
+            self.renderer.mesh_renderer(id.clone()).transform = transform;
+        }
+        id
+    }
+
+    pub fn mesh_renderer(&mut self, id: Rc<MeshRendererID>) -> &mut MeshRenderer {
+        self.renderer.mesh_renderer(id)
     }
 }
