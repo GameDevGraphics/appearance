@@ -167,8 +167,8 @@ impl RaytracerCPU {
         (0..chunk_count).into_iter().for_each(|chunk_idx| {
             let chunk_x = chunk_idx % chunk_count_x;
             let chunk_y = chunk_idx / chunk_count_x;
-            let range_x = (chunk_x * chunk_size)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize));
-            let range_y = (chunk_y * chunk_size)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize));
+            // let range_x = (chunk_x * chunk_size)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize));
+            // let range_y = (chunk_y * chunk_size)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize));
 
             // for x in range_x {
             //     for y in range_y.clone() {
@@ -217,8 +217,10 @@ impl RaytracerCPU {
                     }
                     
                     let ray = SIMDRay::new(&origins, &directions);
-                    let aabb = AABB::new(&Vec3::ZERO, &Vec3::ONE);
-                    let intersection = aabb.intesect_simd(&ray, 0.01, 100.0);
+                    let check_ray = Ray::new(&origins[0], &directions[0]);
+                    let triangle = Triangle::new(&Vec3::new(-1.0, 0.0, 0.0), &Vec3::new(0.0, 1.0, 0.0), &Vec3::new(1.0, 0.0, 0.0));
+                    let intersection = triangle.intersect_simd(&ray, 0.01, 100.0);
+                    //let check_intersection = triangle.intersect(&check_ray, 0.01, 100.0);
 
                     for px in 0..2 {
                         for py in 0..2 {
