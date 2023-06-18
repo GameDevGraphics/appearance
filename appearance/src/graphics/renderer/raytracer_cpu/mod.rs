@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use uuid::Uuid;
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 
 use glam::*;
 use super::*;
@@ -15,7 +17,7 @@ mod acc_structures;
 use acc_structures::*;
 
 pub struct RaytracerCPU {
-    framebuffer: Framebuffer,
+    framebuffer: Arc<Mutex<Framebuffer>>,
 
     mesh_handles: HandleQueue<MeshRendererID>,                  // Handle queue to hand out handles
     mesh_instances: HashMap<Rc<MeshRendererID>, MeshRenderer>,  // Every handle pointing to its instance
@@ -25,7 +27,11 @@ pub struct RaytracerCPU {
 impl RaytracerCPU {
     pub(crate) fn new(window: &Window) -> Self {
         gl_helper::gl_init(window.internal_context());
-        let framebuffer = Framebuffer::new(window.get_width(), window.get_height());
+        let framebuffer = Arc::new(
+            Mutex::new(
+                Framebuffer::new(window.get_width(), window.get_height())
+            )
+        );
 
         RaytracerCPU {
             framebuffer,
@@ -85,14 +91,20 @@ impl Renderer for RaytracerCPU {
 
 impl private::Renderer for RaytracerCPU {
     fn resize(&mut self, width: u32, height: u32) {
-        self.framebuffer = Framebuffer::new(width, height);
+        if let Ok(mut framebuffer) = self.framebuffer.lock() {
+            *framebuffer = Framebuffer::new(width, height);
+        }
     }
 
     fn render(&mut self, window: &Window, camera: &mut Camera) {
         self.update();
 
-        let width = self.framebuffer.width();
-        let height = self.framebuffer.height();
+        let (width, height) =
+        if let Ok(framebuffer) = self.framebuffer.lock() {
+            (framebuffer.width(), framebuffer.height())
+        } else {
+            panic!("Failed to get framebuffer mutex.")
+        };
 
         let origin = *camera.view_inv_matrix() * Vec4::new(0.0, 0.0, 0.0, 1.0);
 
@@ -120,28 +132,67 @@ impl private::Renderer for RaytracerCPU {
         let mut tlas = TLAS::new(blas_instances);
         tlas.rebuild();
 
-        for x in 0..width {
-            for y in 0..height {
-                let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);
-                let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
-                let target = *camera.proj_inv_matrix() * Vec4::new(uv.x, uv.y, 1.0, 1.0);
-                let direction = *camera.view_inv_matrix() * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, -1.0, 1.0), 0.0));
+        Self::dispatch_rays(
+            self.framebuffer.clone(),
+            width,
+            height,
+            *camera.proj_inv_matrix(),
+            *camera.view_inv_matrix(),
+            &origin.xyz(),
+            &blases,
+            &tlas
+        );
+        
+        if let Ok(mut framebuffer) = self.framebuffer.lock() {
+            framebuffer.display(window);
+        }
+    }
+}
 
-                let ray = Ray::new(&origin.xyz(), &direction.xyz());
+impl RaytracerCPU {
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_rays(
+        framebuffer: Arc<Mutex<Framebuffer>>,
+        width: u32, height: u32,
+        proj_inv_matrix: Mat4, view_inv_matrix: Mat4, origin: &Vec3,
+        blases: &[&BLAS<Triangle>], tlas: &TLAS
+    ) {
+        let chunk_size = 32;
+        let chunk_count_x = (width as f32 / chunk_size as f32).ceil() as usize;
+        let chunk_count_y = (height as f32 / chunk_size as f32).ceil() as usize;
+        let chunk_count = chunk_count_x * chunk_count_y;
 
-                if let Some(closest_hit) = tlas.intersect(&ray, 0.01, 100.0, &mut blases) {
-                    let cold = Vec3::new(0.0, 1.0, 0.0);
-                    let hot = Vec3::new(1.0, 0.0, 0.0);
-                    let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
-                    let color = cold.lerp(hot, t);
+        (0..chunk_count).into_par_iter().for_each(|chunk_idx| {
+            let chunk_x = chunk_idx % chunk_count_x;
+            let chunk_y = chunk_idx / chunk_count_x;
+            let range_x = (chunk_x * chunk_size)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize));
+            let range_y = (chunk_y * chunk_size)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize));
 
-                    self.framebuffer.set_pixel(x, y, &color);
-                } else {
-                    self.framebuffer.set_pixel(x, y, &Vec3::new(0.0, 0.0, 0.0));
+            for x in range_x {
+                for y in range_y.clone() {
+                    let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);
+                    let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+                    let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+                    let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, -1.0, 1.0), 0.0));
+                
+                    let ray = Ray::new(origin, &direction.xyz());
+                
+                    if let Some(closest_hit) = tlas.intersect(&ray, 0.01, 100.0, blases) {
+                        let cold = Vec3::new(0.0, 1.0, 0.0);
+                        let hot = Vec3::new(1.0, 0.0, 0.0);
+                        let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
+                        let color = cold.lerp(hot, t);
+                    
+                        if let Ok(mut framebuffer) = framebuffer.lock() {
+                            framebuffer.set_pixel(x as u32, y as u32, &color);
+                        }
+                    } else {
+                        if let Ok(mut framebuffer) = framebuffer.lock() {
+                            framebuffer.set_pixel(x as u32, y as u32, &Vec3::new(0.0, 0.0, 0.0));
+                        }
+                    }
                 }
             }
-        }
-
-        self.framebuffer.display(window);
+        });
     }
 }

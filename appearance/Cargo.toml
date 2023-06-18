@@ -6,11 +6,11 @@ edition = "2021"
 
 [dependencies]
 bitmask-enum = "2.1.0"
+rayon = "1.7.0"
 stb_image = "0.2.4"
 gltf = "1.0.0"
 glam = "0.23.0"
 gl = "0.14.0"
-specs = "0.18.0"
 glutin = "0.29.1"
 gl-helper = { path = "../gl_helper" }
 
@@ -39,7 +39,7 @@ rpath = false                           # Sets the rpath linking option.
 
 [profile.release]                       # Modify profile settings via config.
 opt-level = 3                           # Optimization level.
-debug = false                           # Include debug info.
+debug = true                            # Include debug info.
 debug-assertions = false                # Enables debug assertions.
 overflow-checks = false                 # Enables runtime integer overflow checks.
 lto = true                              # Sets link-time optimization.

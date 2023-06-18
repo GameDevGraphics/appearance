@@ -98,7 +98,7 @@ impl TLAS {
         best_b
     }
 
-    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS<T>]) -> Option<Intersection> {
+    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> Option<Intersection> {
         let mut closest: Option<Intersection> = None;
         let mut stack: [Option<&Node>; 64] = [None; 64];
         let mut stack_idx = 0;

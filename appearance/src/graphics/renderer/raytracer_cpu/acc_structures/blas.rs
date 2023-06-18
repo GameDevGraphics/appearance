@@ -339,7 +339,7 @@ impl BLASInstance {
         &self.bounds
     }
 
-    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &mut [&BLAS<T>]) -> Option<Intersection> {
+    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> Option<Intersection> {
         let transformed_ray = Ray::new(
             &(self.inv_transform * Vec4::from((*ray.origin(), 1.0))).xyz(),
             &(self.inv_transform * Vec4::from((*ray.direction(), 0.0))).xyz()
