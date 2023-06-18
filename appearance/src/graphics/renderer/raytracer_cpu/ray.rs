@@ -360,13 +360,7 @@ impl AABB {
             return Intersection::default();
         }
 
-        // if tymin > txmin {
-        //     txmin = tymin;
-        // }
         txmin = txmin.max(tymin);
-        // if tymax < txmax {
-        //     txmax = tymax;
-        // }
         txmax = txmax.min(tymax);
 
         let tzmin = (self.bounds[ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
@@ -376,14 +370,7 @@ impl AABB {
             return Intersection::default();
         }
 
-        // if tzmin > txmin {
-        //     txmin = tzmin;
-        // }
         txmin = txmin.max(tzmin);
-        // if tzmax < txmax {
-        //     txmax = tzmax;
-        // }
-        // NEW!!!!
         txmax = txmax.min(tzmax);
         if txmin < 0.0 {
             txmin = txmax;
@@ -441,25 +428,16 @@ impl AABB {
         // if txmin > tymax || tymin > txmax {
         //     return Intersection::default();
         // }
-        let mut dead_rays = txmin.simd_gt(tymax);
-        dead_rays |= tymin.simd_gt(txmax);
+        let mut dead_rays = txmin.simd_gt(tymax) | tymin.simd_gt(txmax);
         if dead_rays.all() {
             return SIMDIntersection::default();
         }
 
-        // if tymin > txmin {
-        //     txmin = tymin;
-        // }
-        let cmp = tymin.simd_gt(txmin);
-        let diff = tymin - txmin;
-        txmin += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
+        // txmin = txmin.max(tymin);
+        txmin = txmin.simd_max(tymin);
 
-        // if tymax < txmax {
-        //     txmax = tymax;
-        // }
-        let cmp = tymax.simd_lt(txmax);
-        let diff = tymax - txmax;
-        txmax += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
+        // txmax = txmax.min(tymax);
+        txmax = txmax.simd_min(tymax);
 
         // let tzmin = (self.bounds[ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
         let signs2 = ray.signs[2].to_array();
@@ -488,11 +466,15 @@ impl AABB {
             return SIMDIntersection::default();
         }
 
-        // if tzmin > txmin {
-        //     txmin = tzmin;
+        // txmin = txmin.max(tzmin);
+        txmin = txmin.simd_max(tzmin);
+        // txmax = txmax.min(tzmax);
+        txmax = txmax.simd_min(tzmax);
+        // if txmin < 0.0 {
+        //     txmin = txmax;
         // }
-        let cmp = tzmin.simd_gt(txmin);
-        let diff = tzmin - txmin;
+        let cmp = txmin.simd_lt(f32x4::splat(0.0));
+        let diff = txmax - txmin;
         txmin += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
 
         // if txmin < tmin || txmin > tmax {
