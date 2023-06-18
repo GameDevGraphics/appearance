@@ -1,5 +1,5 @@
 use glam::*;
-use super::{Ray, AABB, Intersection, BLASInstance, BLAS, BLASPrimitive};
+use super::{Ray, AABB, Intersection, BLASInstance, BLAS, BLASPrimitive, SIMDRay, SIMDIntersection};
 
 /*****************************************************************************
 *                               PUB STRUCTS
@@ -152,6 +152,83 @@ impl TLAS {
         }
 
         closest.heat += heat;
+
+        closest
+    }
+
+    pub fn intersect_simd<T: BLASPrimitive>(&self, ray: &SIMDRay, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> SIMDIntersection {
+        let mut closest = SIMDIntersection::default();
+        let mut stack = [None; 64];
+        let mut stack_idx = 0;
+        let mut node = &self.nodes[0];
+
+        let mut heat = 0;
+
+        loop {
+            heat += 1;
+            if node.is_leaf() {
+                let hit = self.blas_instances[node.blas_idx as usize].intersect_simd(ray, tmin, tmax, blases);
+                closest.store_closest(&hit);
+
+                if stack_idx == 0 {
+                    break;
+                } else {
+                    stack_idx -= 1;
+                    node = stack[stack_idx].unwrap();
+                }
+            } else {
+                let lchild_idx = (node.left_right & 0xffff) as usize;
+                let rchild_idx = (node.left_right >> 16) as usize;
+                let mut child1 = &self.nodes[lchild_idx];
+                let mut child2 = &self.nodes[rchild_idx];
+
+                let mut dist1 = child1.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
+                let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
+
+                let mut child_indices = [
+                    [0, 1],
+                    [0, 1],
+                    [0, 1],
+                    [0, 1]
+                ];
+
+                for i in 0..4 {
+                    if dist1[i] > dist2[i] {
+                        std::mem::swap(&mut dist1[i], &mut dist2[i]);
+                        child_indices[i] = [1, 0];
+                    }
+                }
+
+                let mut missed_both = true;
+                for i in 0..4 {
+                    if dist1[i] != f32::MAX {
+                        missed_both = false;
+                        break;
+                    }
+                }
+
+                if missed_both {
+                    if stack_idx == 0 {
+                        break;
+                    } else {
+                        stack_idx -= 1;
+                        node = stack[stack_idx].unwrap();
+                    }
+                } else {
+                    for i in 0..4 {
+                        if dist2[i] != f32::MAX {
+                            node = ([child1, child2])[child_indices[i][0]];
+                            stack[stack_idx] = Some(([child1, child2])[child_indices[i][1]]);
+                            stack_idx += 1;
+                            break;
+                        }
+                    }
+                    node = ([child1, child2])[child_indices[0][0]];
+                }
+            }
+        }
+
+        closest.heat += std::simd::i32x4::splat(heat);
 
         closest
     }

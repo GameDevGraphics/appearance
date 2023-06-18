@@ -1,6 +1,6 @@
 use glam::*;
 use crate::Timer;
-use super::{Ray, AABB, Intersection};
+use super::{Ray, AABB, Intersection, SIMDRay, SIMDIntersection};
 
 /*****************************************************************************
 *                               PUB STRUCTS
@@ -24,6 +24,7 @@ pub trait BLASPrimitive {
     fn centroid(&self) -> Vec3;
     fn expand_aabb(&self, aabb: &mut AABB);
     fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection;
+    fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection;
 }
 
 pub struct BLASInstance {
@@ -308,6 +309,88 @@ impl<T: BLASPrimitive> BLAS<T> {
 
         closest
     }
+
+    pub fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
+        let mut closest = SIMDIntersection::default();
+        let mut stack = [None; 64];
+        let mut stack_idx = 0;
+        let mut node = &self.nodes[0];
+
+        let mut heat = 0;
+
+        loop {
+            heat += 1;
+            if node.is_leaf() {
+                for i in node.first_prim..(node.first_prim + node.prim_count) {
+                    let hit = self.primitives[self.indices[i as usize]].intersect_simd(ray, tmin, tmax);
+                    closest.store_closest(&hit);
+                }
+
+                if stack_idx == 0 {
+                    break;
+                } else {
+                    stack_idx -= 1;
+                    node = stack[stack_idx].unwrap();
+                }
+            } else {
+                let lchild_idx = node.first_prim as usize;
+                let mut child1 = &self.nodes[lchild_idx];
+                let mut child2 = &self.nodes[lchild_idx + 1];
+
+                let mut dist1 = child1.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
+                let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
+
+                let mut child_indices = [
+                    [0, 1],
+                    [0, 1],
+                    [0, 1],
+                    [0, 1]
+                ];
+
+                for i in 0..4 {
+                    if dist1[i] > dist2[i] {
+                        std::mem::swap(&mut dist1[i], &mut dist2[i]);
+                        child_indices[i] = [1, 0];
+                    }
+                }
+
+                let mut missed_both = true;
+                for i in 0..4 {
+                    if dist1[i] != f32::MAX {
+                        missed_both = false;
+                        break;
+                    }
+                }
+
+                if missed_both {
+                    if stack_idx == 0 {
+                        break;
+                    } else {
+                        stack_idx -= 1;
+                        node = stack[stack_idx].unwrap();
+                    }
+                } else {
+                    node = ([child1, child2])[child_indices[0][0]];
+
+                    let mut any_hit_2 = false;
+                    for i in 0..4 {
+                        if dist2[i] != f32::MAX {
+                            any_hit_2 = true;
+                            break;
+                        }
+                    }
+                    if any_hit_2 {
+                        stack[stack_idx] = Some(([child1, child2])[child_indices[0][1]]);
+                        stack_idx += 1;
+                    }
+                }
+            }
+        }
+
+        closest.heat = std::simd::i32x4::splat(heat);
+
+        closest
+    }
 }
 
 impl BLASInstance {
@@ -339,6 +422,11 @@ impl BLASInstance {
         );
 
         blases[self.blas_idx as usize].intersect(&transformed_ray, tmin, tmax)
+    }
+
+    pub fn intersect_simd<T: BLASPrimitive>(&self, ray: &SIMDRay, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> SIMDIntersection {
+        let transformed_ray = ray.apply_transform(&self.inv_transform);
+        blases[self.blas_idx as usize].intersect_simd(&transformed_ray, tmin, tmax)
     }
 }
 
