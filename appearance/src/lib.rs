@@ -1,3 +1,5 @@
+#![feature(portable_simd)]
+
 mod main_loop;
 pub use main_loop::*;
 

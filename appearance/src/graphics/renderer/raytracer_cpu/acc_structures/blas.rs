@@ -23,7 +23,7 @@ pub enum BLASBuildMode {
 pub trait BLASPrimitive {
     fn centroid(&self) -> Vec3;
     fn expand_aabb(&self, aabb: &mut AABB);
-    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection>;
+    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection;
 }
 
 pub struct BLASInstance {
@@ -250,9 +250,9 @@ impl<T: BLASPrimitive> BLAS<T> {
         Self::subdivide(lchild + 1, nodes, node_count, primitives, indices, triangle_centroids, build_mode);
     }
 
-    pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
-        let mut closest: Option<Intersection> = None;
-        let mut stack: [Option<&Node>; 64] = [None; 64];
+    pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection {
+        let mut closest = Intersection::default();
+        let mut stack = [None; 64];
         let mut stack_idx = 0;
         let mut node = &self.nodes[0];
 
@@ -262,14 +262,9 @@ impl<T: BLASPrimitive> BLAS<T> {
             heat += 1;
             if node.is_leaf() {
                 for i in node.first_prim..(node.first_prim + node.prim_count) {
-                    if let Some(hit) = self.primitives[self.indices[i as usize]].intersect(ray, tmin, tmax) {
-                        if let Some(closest_value) = &closest {
-                            if hit.t < closest_value.t {
-                                closest = Some(hit);
-                            }
-                        } else {
-                            closest = Some(hit);
-                        }
+                    let hit = self.primitives[self.indices[i as usize]].intersect(ray, tmin, tmax);
+                    if hit.t < closest.t {
+                        closest = hit;
                     }
                 }
 
@@ -284,8 +279,8 @@ impl<T: BLASPrimitive> BLAS<T> {
                 let mut child1 = &self.nodes[lchild_idx];
                 let mut child2 = &self.nodes[lchild_idx + 1];
 
-                let mut dist1 = child1.bounds.intersect(ray, tmin, tmax).unwrap_or_default().t;
-                let mut dist2 = child2.bounds.intersect(ray, tmin, tmax).unwrap_or_default().t;
+                let mut dist1 = child1.bounds.intersect(ray, tmin, tmax).t;
+                let mut dist2 = child2.bounds.intersect(ray, tmin, tmax).t;
 
                 if dist1 > dist2 {
                     std::mem::swap(&mut dist1, &mut dist2);
@@ -309,9 +304,7 @@ impl<T: BLASPrimitive> BLAS<T> {
             }
         }
 
-        if let Some(closest) = &mut closest {
-            closest.heat = heat;
-        }
+        closest.heat = heat;
 
         closest
     }
@@ -339,7 +332,7 @@ impl BLASInstance {
         &self.bounds
     }
 
-    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> Option<Intersection> {
+    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> Intersection {
         let transformed_ray = Ray::new(
             &(self.inv_transform * Vec4::from((*ray.origin(), 1.0))).xyz(),
             &(self.inv_transform * Vec4::from((*ray.direction(), 0.0))).xyz()

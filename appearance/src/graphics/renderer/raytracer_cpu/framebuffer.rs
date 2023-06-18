@@ -74,7 +74,9 @@ impl FramebufferTexture {
 
     #[inline]
     fn set_pixel(&mut self, x: u32, y: u32, value: u32) {
-        self.pixels[(x + y * self.width) as usize] = value;
+        if x < self.width && y < self.height {
+            self.pixels[(x + y * self.width) as usize] = value;
+        }
     }
 
     fn bind(&self, slot: u32) {

@@ -98,9 +98,9 @@ impl TLAS {
         best_b
     }
 
-    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> Option<Intersection> {
-        let mut closest: Option<Intersection> = None;
-        let mut stack: [Option<&Node>; 64] = [None; 64];
+    pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> Intersection {
+        let mut closest = Intersection::default();
+        let mut stack = [None; 64];
         let mut stack_idx = 0;
         let mut node = &self.nodes[0];
 
@@ -109,14 +109,9 @@ impl TLAS {
         loop {
             heat += 1;
             if node.is_leaf() {
-                if let Some(hit) = self.blas_instances[node.blas_idx as usize].intersect(ray, tmin, tmax, blases) {
-                    if let Some(closest_value) = &closest {
-                        if hit.t < closest_value.t {
-                            closest = Some(hit);
-                        }
-                    } else {
-                        closest = Some(hit);
-                    }
+                let hit = self.blas_instances[node.blas_idx as usize].intersect(ray, tmin, tmax, blases);
+                if hit.t < closest.t {
+                    closest = hit;
                 }
 
                 if stack_idx == 0 {
@@ -131,8 +126,8 @@ impl TLAS {
                 let mut child1 = &self.nodes[lchild_idx];
                 let mut child2 = &self.nodes[rchild_idx];
 
-                let mut dist1 = child1.bounds.intersect(ray, tmin, tmax).unwrap_or_default().t;
-                let mut dist2 = child2.bounds.intersect(ray, tmin, tmax).unwrap_or_default().t;
+                let mut dist1 = child1.bounds.intersect(ray, tmin, tmax).t;
+                let mut dist2 = child2.bounds.intersect(ray, tmin, tmax).t;
 
                 if dist1 > dist2 {
                     std::mem::swap(&mut dist1, &mut dist2);
@@ -156,9 +151,7 @@ impl TLAS {
             }
         }
 
-        if let Some(closest) = &mut closest {
-            closest.heat += heat;
-        }
+        closest.heat += heat;
 
         closest
     }

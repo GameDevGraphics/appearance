@@ -11,6 +11,8 @@ mod framebuffer;
 use framebuffer::*;
 mod ray;
 use ray::*;
+mod simd_ray;
+use simd_ray::*;
 mod mesh;
 use mesh::*;
 mod acc_structures;
@@ -162,33 +164,73 @@ impl RaytracerCPU {
         let chunk_count_y = (height as f32 / chunk_size as f32).ceil() as usize;
         let chunk_count = chunk_count_x * chunk_count_y;
 
-        (0..chunk_count).into_par_iter().for_each(|chunk_idx| {
+        (0..chunk_count).into_iter().for_each(|chunk_idx| {
             let chunk_x = chunk_idx % chunk_count_x;
             let chunk_y = chunk_idx / chunk_count_x;
             let range_x = (chunk_x * chunk_size)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize));
             let range_y = (chunk_y * chunk_size)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize));
 
+            // for x in range_x {
+            //     for y in range_y.clone() {
+            //         let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);
+            //         let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+            //         let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+            //         let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, -1.0, 1.0), 0.0));
+                
+            //         let ray = Ray::new(origin, &direction.xyz());
+
+            //         let closest_hit = tlas.intersect(&ray, 0.01, 100.0, blases);
+            //         if closest_hit.hit() {
+            //             let cold = Vec3::new(0.0, 1.0, 0.0);
+            //             let hot = Vec3::new(1.0, 0.0, 0.0);
+            //             let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
+            //             let color = cold.lerp(hot, t);
+                    
+            //             if let Ok(mut framebuffer) = framebuffer.lock() {
+            //                 framebuffer.set_pixel(x as u32, y as u32, &color);
+            //             }
+            //         } else {
+            //             if let Ok(mut framebuffer) = framebuffer.lock() {
+            //                 framebuffer.set_pixel(x as u32, y as u32, &Vec3::new(0.0, 0.0, 0.0));
+            //             }
+            //         }
+            //     }
+            // }
+
+            let range_x = ((chunk_x * chunk_size) / 2)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize)  / 2);
+            let range_y = ((chunk_y * chunk_size) / 2)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize) / 2);
+
             for x in range_x {
                 for y in range_y.clone() {
-                    let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);
-                    let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
-                    let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
-                    let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, -1.0, 1.0), 0.0));
-                
-                    let ray = Ray::new(origin, &direction.xyz());
-                
-                    if let Some(closest_hit) = tlas.intersect(&ray, 0.01, 100.0, blases) {
-                        let cold = Vec3::new(0.0, 1.0, 0.0);
-                        let hot = Vec3::new(1.0, 0.0, 0.0);
-                        let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
-                        let color = cold.lerp(hot, t);
-                    
-                        if let Ok(mut framebuffer) = framebuffer.lock() {
-                            framebuffer.set_pixel(x as u32, y as u32, &color);
+                    let mut origins = [Vec3::ZERO; 4];
+                    let mut directions = [Vec3::ZERO; 4];
+                    for px in 0..2 {
+                        for py in 0..2 {
+                            let pixel_center = Vec2::new((x * 2 + px) as f32, (y * 2 + py) as f32) + Vec2::splat(0.5);
+                            let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+                            let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+                            let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, -1.0, 1.0), 0.0));
+
+                            origins[px + py * 2] = *origin;
+                            directions[px + py * 2] = direction.xyz();
                         }
-                    } else {
-                        if let Ok(mut framebuffer) = framebuffer.lock() {
-                            framebuffer.set_pixel(x as u32, y as u32, &Vec3::new(0.0, 0.0, 0.0));
+                    }
+                    
+                    let ray = SIMDRay::new(&origins, &directions);
+                    let aabb = AABB::new(&Vec3::ZERO, &Vec3::ONE);
+                    let intersection = aabb.intesect_simd(&ray, 0.01, 100.0);
+
+                    for px in 0..2 {
+                        for py in 0..2 {
+                            if intersection.hit(px + py * 2) {
+                                if let Ok(mut framebuffer) = framebuffer.lock() {
+                                    framebuffer.set_pixel((x * 2 + px) as u32, (y * 2 + py) as u32, &Vec3::ONE);
+                                }
+                            } else {
+                                if let Ok(mut framebuffer) = framebuffer.lock() {
+                                    framebuffer.set_pixel((x * 2 + px) as u32, (y * 2 + py) as u32, &Vec3::ZERO);
+                                }
+                            }
                         }
                     }
                 }

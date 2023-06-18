@@ -31,8 +31,7 @@ fn init(resources: &mut Resources, graphics: &mut Graphics) -> GameState {
                 helmet_ids.push(helmet_id);
             }
         }
-    }
-    
+    }    
 
     GameState {
         helmet_ids,

@@ -3,10 +3,10 @@ use super::acc_structures::BLASPrimitive;
 
 #[derive(Clone, Debug)]
 pub struct Ray {
-    origin: Vec3,
-    direction: Vec3,
-    inv_direction: Vec3,
-    signs: [bool; 3]
+    pub origin: Vec3,
+    pub direction: Vec3,
+    pub inv_direction: Vec3,
+    pub signs: [bool; 3]
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -34,10 +34,16 @@ impl Default for Intersection {
     }
 }
 
+impl Intersection {
+    pub fn hit(&self) -> bool {
+        self.t != f32::MAX
+    }
+}
+
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug)]
 pub struct AABB {
-    bounds: [Vec3; 2]
+    pub bounds: [Vec3; 2]
 }
 
 impl Default for AABB {
@@ -75,7 +81,7 @@ impl BLASPrimitive for Triangle {
     }
 
     #[allow(clippy::manual_range_contains)]
-    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
+    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection {
         let edge1 = self.p1 - self.p0;
         let edge2 = self.p2 - self.p0;
         let pvec = ray.direction.cross(edge2);
@@ -84,24 +90,24 @@ impl BLASPrimitive for Triangle {
         let (mut t, mut u, mut v);
         if false {
             if det < 0.00000001 {
-                return None;
+                return Intersection::default();
             }
 
             let tvec = ray.origin - self.p0;
             u = tvec.dot(pvec);
             if u < 0.0 || u > det {
-                return None;
+                return Intersection::default();
             }
 
             let qvec = tvec.cross(edge1);
             v = ray.direction.dot(qvec);
             if v < 0.0 || u + v > det {
-                return None;
+                return Intersection::default();
             }
 
             t = edge2.dot(qvec);
             if t < tmin || t > tmax {
-                return None;
+                return Intersection::default();
             }
 
             let inv_det = 1.0 / det;
@@ -110,30 +116,30 @@ impl BLASPrimitive for Triangle {
             v *= inv_det;
         } else {
             if det > -0.00000001 && det < 0.00000001 {
-                return None;
+                return Intersection::default();
             }
             let inv_det = 1.0 / det;
 
             let tvec = ray.origin - self.p0;
             u = tvec.dot(pvec) * inv_det;
             if u < 0.0 || u > 1.0 {
-                return None;
+                return Intersection::default();
             }
 
             let qvec = tvec.cross(edge1);
             v = ray.direction.dot(qvec) * inv_det;
             if v < 0.0 || u + v > 1.0 {
-                return None;
+                return Intersection::default();
             }
 
             t = edge2.dot(qvec) * inv_det;
         }
 
-        Some(Intersection {
+        Intersection {
             t,
             uv: Vec2::new(u, v),
             ..Default::default()
-        })
+        }
     }
 }
 
@@ -204,14 +210,14 @@ impl AABB {
         ]
     }
 
-    pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Intersection> {
+    pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection {
         let mut txmin = (self.bounds[ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
         let mut txmax = (self.bounds[1 - ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
         let tymin = (self.bounds[ray.signs[1] as usize].y - ray.origin.y) * ray.inv_direction.y;
         let tymax = (self.bounds[1 - ray.signs[1] as usize].y - ray.origin.y) * ray.inv_direction.y;
 
         if txmin > tymax || tymin > txmax {
-            return None;
+            return Intersection::default();
         }
 
         if tymin > txmin {
@@ -225,7 +231,7 @@ impl AABB {
         let tzmax = (self.bounds[1 - ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
 
         if txmin > tzmax || tzmin > txmax {
-            return None;
+            return Intersection::default();
         }
 
         if tzmin > txmin {
@@ -236,13 +242,13 @@ impl AABB {
         // }
 
         if txmin < tmin || txmin > tmax {
-            return None;
+            return Intersection::default();
         }
 
-        Some(Intersection {
+        Intersection {
             t: txmin,
             ..Default::default()
-        })
+        }
     }
 }
 
