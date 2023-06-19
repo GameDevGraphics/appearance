@@ -45,17 +45,16 @@ impl Intersection {
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug)]
 pub struct AABB {
-    pub bounds: [Vec3; 2]
+    pub min: Vec3,
+    pub max: Vec3
 }
 
 impl Default for AABB {
     #[inline]
     fn default() -> Self {
         AABB {
-            bounds: [
-                Vec3::splat(f32::MAX),
-                Vec3::splat(f32::MIN)
-            ]
+            min: Vec3::splat(f32::MAX),
+            max: Vec3::splat(f32::MIN)
         }
     }
 }
@@ -285,18 +284,19 @@ impl AABB {
     #[inline]
     pub fn new(min: &Vec3, max: &Vec3) -> Self {
         AABB {
-            bounds: [*min, *max]
+            min: *min,
+            max: *max
         }
     }
 
     #[inline]
     pub fn grow_aabb(&mut self, aabb: &AABB) {
-        if aabb.min().x == f32::MAX {
+        if aabb.min.x == f32::MAX {
             return;
         }
         
-        self.grow_vec3(&aabb.bounds[0]);
-        self.grow_vec3(&aabb.bounds[1]);
+        self.grow_vec3(&aabb.min);
+        self.grow_vec3(&aabb.max);
     }
 
     #[inline]
@@ -308,23 +308,13 @@ impl AABB {
 
     #[inline]
     pub fn grow_vec3(&mut self, p: &Vec3) {
-        self.bounds[0] = p.min(self.bounds[0]);
-        self.bounds[1] = p.max(self.bounds[1]);
+        self.min = p.min(self.min);
+        self.max = p.max(self.max);
     }
 
     #[inline]
     pub fn extent(&self) -> Vec3 {
-        *self.max() - *self.min()
-    }
-
-    #[inline]
-    pub fn min(&self) -> &Vec3 {
-        &self.bounds[0]
-    }
-
-    #[inline]
-    pub fn max(&self) -> &Vec3 {
-        &self.bounds[1]
+        self.max - self.min
     }
 
     #[inline]
@@ -336,161 +326,65 @@ impl AABB {
     #[inline]
     pub fn corners(&self) -> [Vec3; 8] {
         [
-            Vec3::new(self.min().x, self.min().y, self.min().z),
-            Vec3::new(self.max().x, self.min().y, self.min().z),
-            Vec3::new(self.max().x, self.min().y, self.max().z),
-            Vec3::new(self.min().x, self.min().y, self.max().z),
+            Vec3::new(self.min.x, self.min.y, self.min.z),
+            Vec3::new(self.max.x, self.min.y, self.min.z),
+            Vec3::new(self.max.x, self.min.y, self.max.z),
+            Vec3::new(self.min.x, self.min.y, self.max.z),
 
-            Vec3::new(self.min().x, self.max().y, self.min().z),
-            Vec3::new(self.max().x, self.max().y, self.min().z),
-            Vec3::new(self.max().x, self.max().y, self.max().z),
-            Vec3::new(self.min().x, self.max().y, self.max().z)
+            Vec3::new(self.min.x, self.max.y, self.min.z),
+            Vec3::new(self.max.x, self.max.y, self.min.z),
+            Vec3::new(self.max.x, self.max.y, self.max.z),
+            Vec3::new(self.min.x, self.max.y, self.max.z)
         ]
     }
 
-    // use fused mul-add, fix traversal, min/max
-
     pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection {
-        let mut txmin = (self.bounds[ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
-        let mut txmax = (self.bounds[1 - ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
-        let tymin = (self.bounds[ray.signs[1] as usize].y - ray.origin.y) * ray.inv_direction.y;
-        let tymax = (self.bounds[1 - ray.signs[1] as usize].y - ray.origin.y) * ray.inv_direction.y;
+        let tx1 = (self.min.x - ray.origin.x) * ray.inv_direction.x;
+        let tx2 = (self.max.x - ray.origin.x) * ray.inv_direction.x;
+        let mut tmin = tx1.min(tx2);
+        let mut tmax = tx1.max(tx2);
 
-        if txmin > tymax || tymin > txmax {
-            return Intersection::default();
-        }
+        let ty1 = (self.min.y - ray.origin.y) * ray.inv_direction.y;
+        let ty2 = (self.max.y - ray.origin.y) * ray.inv_direction.y;
+        tmin = ty1.min(ty2).max(tmin);
+        tmax = ty1.max(ty2).min(tmax);
 
-        txmin = txmin.max(tymin);
-        txmax = txmax.min(tymax);
+        let tz1 = (self.min.z - ray.origin.z) * ray.inv_direction.z;
+        let tz2 = (self.max.z - ray.origin.z) * ray.inv_direction.z;
+        tmin = tz1.min(tz2).max(tmin);
+        tmax = tz1.max(tz2).min(tmax);
 
-        let tzmin = (self.bounds[ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
-        let tzmax = (self.bounds[1 - ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
-
-        if txmin > tzmax || tzmin > txmax {
-            return Intersection::default();
-        }
-
-        txmin = txmin.max(tzmin);
-        txmax = txmax.min(tzmax);
-        if txmin < 0.0 && txmax >= 0.0 {
-            txmin = tmin + 0.0001;
-        }
-
-        if txmin < tmin || txmin > tmax {
-            return Intersection::default();
-        }
-
-        Intersection {
-            t: txmin,
-            ..Default::default()
+        if tmax >= tmin && tmax > 0.0 {
+            Intersection {
+                t: tmin,
+                ..Default::default()
+            }
+        } else {
+            Intersection::default()
         }
     }
 
     pub fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
-        // let mut txmin = (self.bounds[ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
-        let signs0 = ray.signs[0].to_array();
-        let bounds_x = f32x4::from_array([
-            self.bounds[signs0[0] as usize].x,
-            self.bounds[signs0[1] as usize].x,
-            self.bounds[signs0[2] as usize].x,
-            self.bounds[signs0[3] as usize].x
-        ]);
-        let mut txmin = (bounds_x - ray.origin_x) * ray.inv_direction_x;
+        let tx1 = (f32x4::splat(self.min.x) - ray.origin_x) * ray.inv_direction_x;
+        let tx2 = (f32x4::splat(self.max.x) - ray.origin_x) * ray.inv_direction_x;
+        let mut tmin = tx1.simd_min(tx2);
+        let mut tmax = tx1.simd_max(tx2);
 
-        // let mut txmax = (self.bounds[1 - ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
-        let bounds_x = f32x4::from_array([
-            self.bounds[1 - signs0[0] as usize].x,
-            self.bounds[1 - signs0[1] as usize].x,
-            self.bounds[1 - signs0[2] as usize].x,
-            self.bounds[1 - signs0[3] as usize].x
-        ]);
-        let mut txmax = (bounds_x - ray.origin_x) * ray.inv_direction_x;
+        let ty1 = (f32x4::splat(self.min.y) - ray.origin_y) * ray.inv_direction_y;
+        let ty2 = (f32x4::splat(self.max.y) - ray.origin_y) * ray.inv_direction_y;
+        tmin = ty1.simd_min(ty2).simd_max(tmin);
+        tmax = ty1.simd_max(ty2).simd_min(tmax);
 
-        // let tymin = (self.bounds[ray.signs[1] as usize].y - ray.origin.y) * ray.inv_direction.y;
-        let signs1 = ray.signs[1].to_array();
-        let bounds_y = f32x4::from_array([
-            self.bounds[signs1[0] as usize].y,
-            self.bounds[signs1[1] as usize].y,
-            self.bounds[signs1[2] as usize].y,
-            self.bounds[signs1[3] as usize].y
-        ]);
-        let tymin = (bounds_y - ray.origin_y) * ray.inv_direction_y;
-        
-        // let tymax = (self.bounds[1 - ray.signs[1] as usize].y - ray.origin.y) * ray.inv_direction.y;
-        let bounds_y = f32x4::from_array([
-            self.bounds[1 - signs1[0] as usize].y,
-            self.bounds[1 - signs1[1] as usize].y,
-            self.bounds[1 - signs1[2] as usize].y,
-            self.bounds[1 - signs1[3] as usize].y
-        ]);
-        let tymax = (bounds_y - ray.origin_y) * ray.inv_direction_y;
+        let tz1 = (f32x4::splat(self.min.z) - ray.origin_z) * ray.inv_direction_z;
+        let tz2 = (f32x4::splat(self.max.z) - ray.origin_z) * ray.inv_direction_z;
+        tmin = tz1.simd_min(tz2).simd_max(tmin);
+        tmax = tz1.simd_max(tz2).simd_min(tmax);
 
-        // if txmin > tymax || tymin > txmax {
-        //     return Intersection::default();
-        // }
-        let mut dead_rays = txmin.simd_gt(tymax) | tymin.simd_gt(txmax);
-        if dead_rays.all() {
-            return SIMDIntersection::default();
-        }
-
-        // txmin = txmin.max(tymin);
-        txmin = txmin.simd_max(tymin);
-
-        // txmax = txmax.min(tymax);
-        txmax = txmax.simd_min(tymax);
-
-        // let tzmin = (self.bounds[ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
-        let signs2 = ray.signs[2].to_array();
-        let bounds_z = f32x4::from_array([
-            self.bounds[signs2[0] as usize].z,
-            self.bounds[signs2[1] as usize].z,
-            self.bounds[signs2[2] as usize].z,
-            self.bounds[signs2[3] as usize].z
-        ]);
-        let tzmin = (bounds_z - ray.origin_z) * ray.inv_direction_z;
-
-        // let tzmax = (self.bounds[1 - ray.signs[2] as usize].z - ray.origin.z) * ray.inv_direction.z;
-        let bounds_z = f32x4::from_array([
-            self.bounds[1 - signs2[0] as usize].z,
-            self.bounds[1 - signs2[1] as usize].z,
-            self.bounds[1 - signs2[2] as usize].z,
-            self.bounds[1 - signs2[3] as usize].z
-        ]);
-        let tzmax = (bounds_z - ray.origin_z) * ray.inv_direction_z;
-
-        // if txmin > tzmax || tzmin > txmax {
-        //     return Intersection::default();
-        // }
-        dead_rays |= txmin.simd_gt(tzmax) | tzmin.simd_gt(txmax);
-        if dead_rays.all() {
-            return SIMDIntersection::default();
-        }
-
-        // txmin = txmin.max(tzmin);
-        txmin = txmin.simd_max(tzmin);
-        // txmax = txmax.min(tzmax);
-        txmax = txmax.simd_min(tzmax);
-        // if txmin < 0.0 && txmax >= 0.0 {
-        //     txmin = tmin + 0.0001;
-        // }
-        let cmp = txmin.simd_lt(f32x4::splat(0.0)) & txmax.simd_ge(f32x4::splat(0.0));
-        let diff = f32x4::splat(tmin + 0.0001) - txmin;
-        txmin += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
-
-        // if txmin < tmin || txmin > tmax {
-        //     return Intersection::default();
-        // }
-        dead_rays |= txmin.simd_lt(f32x4::splat(tmin)) | txmin.simd_gt(f32x4::splat(tmax));
-        if dead_rays.all() {
-            return SIMDIntersection::default();
-        }
-
-        // Replace dead rays t with f32::MAX
-        let diff = f32x4::splat(f32::MAX) - txmin;
-        let txmin = txmin + diff * f32x4::from_array(dead_rays.to_array().map(|x| x as i32 as f32));
-        
+        let cmp = tmax.simd_ge(tmin) & tmax.simd_ge(f32x4::splat(0.0));
+        let diff = f32x4::splat(f32::MAX) - tmin;
+        let tmin = tmin + diff * f32x4::from_array(cmp.to_array().map(|x| (!x) as i32 as f32));
         SIMDIntersection {
-            t: txmin,
+            t: tmin,
             ..Default::default()
         }
     }

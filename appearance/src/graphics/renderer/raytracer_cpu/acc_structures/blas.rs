@@ -149,7 +149,7 @@ impl<T: BLASPrimitive> BLAS<T> {
                 let centroid = &triangle_centroids[indices[i as usize]];
 
                 let bin_idx = (bin_count - 1).min(
-                    ((centroid[axis] - tight_bounds.min()[axis]) * inv_scale) as i32
+                    ((centroid[axis] - tight_bounds.min[axis]) * inv_scale) as i32
                 ) as usize;
                 bin[bin_idx].prim_count += 1;
                 triangle.expand_aabb(&mut bin[bin_idx].bounds);
@@ -182,7 +182,7 @@ impl<T: BLASPrimitive> BLAS<T> {
                 if cost < best_cost {
                     best_cost = cost;
                     best_axis = axis;
-                    best_split_pos = tight_bounds.min()[axis] + scale * (i + 1) as f32;
+                    best_split_pos = tight_bounds.min[axis] + scale * (i + 1) as f32;
                 }
             }
         }

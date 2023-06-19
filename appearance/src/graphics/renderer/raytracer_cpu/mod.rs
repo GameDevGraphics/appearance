@@ -185,7 +185,7 @@ impl RaytracerCPU {
             //             let hot = Vec3::new(1.0, 0.0, 0.0);
             //             //let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
             //             //let color = cold.lerp(hot, t);
-            //             let color = Vec3::ONE;//.lerp(Vec3::ZERO, closest_hit.t * 0.1);
+            //             let color = Vec3::ONE.lerp(Vec3::ZERO, closest_hit.t * 0.1);
                     
             //             if let Ok(mut framebuffer) = framebuffer.lock() {
             //                 framebuffer.set_pixel(x as u32, y as u32, &color);
