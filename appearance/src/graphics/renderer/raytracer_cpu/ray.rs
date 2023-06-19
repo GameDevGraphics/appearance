@@ -184,21 +184,6 @@ impl BLASPrimitive for Triangle {
     }
 
     fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
-        // let origins = ray.origins();
-        // let directions = ray.directions();
-        // let mut intersections = [Intersection::default(); 4];
-        // for i in 0..4 {
-        //     intersections[i] = self.intersect(&Ray::new(&origins[i], &directions[i]), tmin, tmax);
-        // }
-        // let mut simd_intersection = SIMDIntersection::default();
-        // simd_intersection.t = f32x4::from_array([
-        //     intersections[0].t,
-        //     intersections[1].t,
-        //     intersections[2].t,
-        //     intersections[3].t
-        // ]);
-        // return simd_intersection;
-
         let edge1 = self.p1 - self.p0;
         let edge2 = self.p2 - self.p0;
 
@@ -402,21 +387,6 @@ impl AABB {
     }
 
     pub fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
-        // let origins = ray.origins();
-        // let directions = ray.directions();
-        // let mut intersections = [Intersection::default(); 4];
-        // for i in 0..4 {
-        //     intersections[i] = self.intersect(&Ray::new(&origins[i], &directions[i]), tmin, tmax);
-        // }
-        // let mut simd_intersection = SIMDIntersection::default();
-        // simd_intersection.t = f32x4::from_array([
-        //     intersections[0].t,
-        //     intersections[1].t,
-        //     intersections[2].t,
-        //     intersections[3].t
-        // ]);
-        // return simd_intersection;
-
         // let mut txmin = (self.bounds[ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
         let signs0 = ray.signs[0].to_array();
         let bounds_x = f32x4::from_array([
