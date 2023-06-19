@@ -186,7 +186,6 @@ impl TLAS {
                 let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
 
                 let mut flip_childs = [false; 4];
-
                 for i in 0..4 {
                     if dist1[i] > dist2[i] {
                         std::mem::swap(&mut dist1[i], &mut dist2[i]);
@@ -194,11 +193,17 @@ impl TLAS {
                     }
                 }
 
+                // This crap can be reduced into 2 simd operations
+                let mut hit1 = [false; 4];
+                let mut hit2 = [false; 4];
+                for i in 0..4 {
+                    hit1[i] = dist1[i] < closest.t.as_array()[i];
+                    hit2[i] = dist2[i] < closest.t.as_array()[i];
+                }
                 let mut missed_both = true;
-                for (i, d) in dist1.iter().enumerate() {
-                    if *d < closest.t.as_array()[i] {
+                for i in 0..4 {
+                    if hit1[i] || hit2[i] {
                         missed_both = false;
-                        break;
                     }
                 }
 
@@ -210,22 +215,49 @@ impl TLAS {
                         node = stack[stack_idx].unwrap();
                     }
                 } else {
-                    let mut any_hit_2 = false;
-                    let mut hit_2_idx = 0;
-                    for (i, d) in dist2.iter().enumerate() {
-                        if *d < closest.t.as_array()[i] {
-                            any_hit_2 = true;
-                            hit_2_idx = i;
-                            break;
+                    // Check if all rays that hit have the same node as closest
+                    let mut both_hit_as_closest = true;
+                    let mut hit1_indices = [0; 4];
+                    let mut hit1_count = 0;
+                    let mut last_hit_flip = -1;
+                    for i in 0..4 {
+                        if hit1[i] {
+                            if last_hit_flip != -1 && last_hit_flip != flip_childs[i] as i32 {
+                                both_hit_as_closest = false;
+                            }
+                            last_hit_flip = flip_childs[i] as i32;
+
+                            hit1_indices[hit1_count] = i;
+                            hit1_count += 1;
                         }
                     }
-                    
-                    if any_hit_2 {
-                        node = if flip_childs[hit_2_idx] { child2 } else { child1 };
-                        stack[stack_idx] = Some(if flip_childs[hit_2_idx] { child1 } else { child2 });
+
+                    // If both nodes are seen as the closest node, we add them both, the order is irrelevant
+                    if !both_hit_as_closest && hit1_count > 1 {
+                        node = if flip_childs[hit1_indices[0]] { child2 } else { child1 };
+                        stack[stack_idx] = Some(if flip_childs[hit1_indices[0]] { child1 } else { child2 });
                         stack_idx += 1;
-                    } else {
-                        node = if flip_childs[0] { child2 } else { child1 };
+                    }
+                    // If all rays have the same node as closest, we can be sure to add the first node
+                    else if both_hit_as_closest {
+                        // We now check if any ray hits the second node
+                        let mut any_hit2 = false;
+                        let mut any_hit2_idx = 0;
+                        for i in 0..hit1_count {
+                            if hit2[hit1_indices[i]] {
+                                any_hit2 = true;
+                                any_hit2_idx = hit1_indices[i];
+                            }
+                        }
+
+                        // Because the first node depends on whether or not there is a second node
+                        if any_hit2 {
+                            node = if flip_childs[any_hit2_idx] { child2 } else { child1 };
+                            stack[stack_idx] = Some(if flip_childs[any_hit2_idx] { child1 } else { child2 });
+                            stack_idx += 1;
+                        } else {
+                            node = if flip_childs[hit1_indices[0]] { child2 } else { child1 };
+                        }
                     }
                 }
             }
