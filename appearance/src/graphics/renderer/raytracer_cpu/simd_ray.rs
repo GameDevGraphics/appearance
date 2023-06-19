@@ -134,8 +134,7 @@ impl SIMDIntersection {
     pub fn store_closest(&mut self, other: &SIMDIntersection) {
         let cmp = other.t.simd_lt(self.t);
 
-        let diff = other.t - self.t;
-        self.t += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
+        self.t = self.t.simd_min(other.t);
         let diff = other.u - self.u;
         self.u += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
         let diff = other.v - self.v;

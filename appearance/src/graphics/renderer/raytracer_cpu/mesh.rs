@@ -37,10 +37,11 @@ impl Mesh {
         let time = self.timer.elapsed() as f32;
         let triangles = self.blas.primitives();
 
+        let s = (time).sin();
         for (i, triangle) in triangles.iter_mut().enumerate() {
-            triangle.p0.y = self.triangles_original[i].p0.y + self.triangles_original[i].p0.y * (time).sin() * 0.1;
-            triangle.p1.y = self.triangles_original[i].p1.y + self.triangles_original[i].p1.y * (time).sin() * 0.1;
-            triangle.p2.y = self.triangles_original[i].p2.y + self.triangles_original[i].p2.y * (time).sin() * 0.1;
+            triangle.p0.y = self.triangles_original[i].p0.y + self.triangles_original[i].p0.y * s * 0.1;
+            triangle.p1.y = self.triangles_original[i].p1.y + self.triangles_original[i].p1.y * s * 0.1;
+            triangle.p2.y = self.triangles_original[i].p2.y + self.triangles_original[i].p2.y * s * 0.1;
         }
 
         self.blas.refit();

@@ -288,7 +288,7 @@ impl<T: BLASPrimitive> BLAS<T> {
                     std::mem::swap(&mut child1, &mut child2);
                 }
 
-                if dist1 == f32::MAX {
+                if dist1 == f32::MAX || dist1 > closest.t {
                     if stack_idx == 0 {
                         break;
                     } else {
@@ -355,8 +355,8 @@ impl<T: BLASPrimitive> BLAS<T> {
                 }
 
                 let mut missed_both = true;
-                for d in dist1 {
-                    if d != f32::MAX {
+                for (i, d) in dist1.iter().enumerate() {
+                    if *d != f32::MAX && *d < closest.t.as_array()[i] {
                         missed_both = false;
                         break;
                     }
