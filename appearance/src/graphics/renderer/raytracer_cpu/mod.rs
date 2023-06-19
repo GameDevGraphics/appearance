@@ -217,8 +217,6 @@ impl RaytracerCPU {
                     }
                     
                     let ray = SIMDRay::new(&origins, &directions);
-                    let aabb = AABB::new(&Vec3::ZERO, &Vec3::ONE);
-                    //let intersection = aabb.intersect_simd(&ray, 0.01, 100.0);
                     let intersection = tlas.intersect_simd(&ray, 0.01, 100.0, blases);
 
                     for px in 0..2 {

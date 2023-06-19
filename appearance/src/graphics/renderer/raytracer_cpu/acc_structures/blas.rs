@@ -334,8 +334,8 @@ impl<T: BLASPrimitive> BLAS<T> {
                 }
             } else {
                 let lchild_idx = node.first_prim as usize;
-                let mut child1 = &self.nodes[lchild_idx];
-                let mut child2 = &self.nodes[lchild_idx + 1];
+                let child1 = &self.nodes[lchild_idx];
+                let child2 = &self.nodes[lchild_idx + 1];
 
                 let mut dist1 = child1.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
                 let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
@@ -355,8 +355,8 @@ impl<T: BLASPrimitive> BLAS<T> {
                 }
 
                 let mut missed_both = true;
-                for i in 0..4 {
-                    if dist1[i] != f32::MAX {
+                for d in dist1 {
+                    if d != f32::MAX {
                         missed_both = false;
                         break;
                     }
@@ -372,16 +372,20 @@ impl<T: BLASPrimitive> BLAS<T> {
                 } else {
                     node = ([child1, child2])[child_indices[0][0]];
 
-                    let mut any_hit_2 = false;
+                    let mut updated_node = false;
                     for i in 0..4 {
                         if dist2[i] != f32::MAX {
-                            any_hit_2 = true;
+                            node = ([child1, child2])[child_indices[i][0]];
+                            updated_node = true;
+
+                            stack[stack_idx] = Some(([child1, child2])[child_indices[i][1]]);
+                            stack_idx += 1;
                             break;
                         }
                     }
-                    if any_hit_2 {
-                        stack[stack_idx] = Some(([child1, child2])[child_indices[0][1]]);
-                        stack_idx += 1;
+
+                    if !updated_node {
+                        node = ([child1, child2])[child_indices[0][0]];
                     }
                 }
             }

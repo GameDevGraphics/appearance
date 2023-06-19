@@ -372,8 +372,8 @@ impl AABB {
 
         txmin = txmin.max(tzmin);
         txmax = txmax.min(tzmax);
-        if txmin < 0.0 {
-            txmin = txmax;
+        if txmin < 0.0 && txmax >= 0.0 {
+            txmin = tmin + 0.0001;
         }
 
         if txmin < tmin || txmin > tmax {
@@ -470,11 +470,11 @@ impl AABB {
         txmin = txmin.simd_max(tzmin);
         // txmax = txmax.min(tzmax);
         txmax = txmax.simd_min(tzmax);
-        // if txmin < 0.0 {
-        //     txmin = txmax;
+        // if txmin < 0.0 && txmax >= 0.0 {
+        //     txmin = tmin + 0.0001;
         // }
-        let cmp = txmin.simd_lt(f32x4::splat(0.0));
-        let diff = txmax - txmin;
+        let cmp = txmin.simd_lt(f32x4::splat(0.0)) & txmax.simd_ge(f32x4::splat(0.0));
+        let diff = f32x4::splat(tmin + 0.0001) - txmin;
         txmin += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
 
         // if txmin < tmin || txmin > tmax {
