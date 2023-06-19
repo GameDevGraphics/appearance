@@ -1,8 +1,8 @@
 use glam::*;
 use std::simd::*;
 
-pub type SIMDRay = SIMDRayGeneric<16>;
-pub type SIMDIntersection = SIMDIntersectionGeneric<16>;
+pub type SIMDRay = SIMDRayGeneric<32>;
+pub type SIMDIntersection = SIMDIntersectionGeneric<32>;
 
 /*****************************************************************************
 *                               PUB STRUCTS
