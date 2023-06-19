@@ -15,8 +15,7 @@ pub struct SIMDRay {
     pub direction_z: f32x4,
     pub inv_direction_x: f32x4,
     pub inv_direction_y: f32x4,
-    pub inv_direction_z: f32x4,
-    pub signs: [mask32x4; 3]
+    pub inv_direction_z: f32x4
 }
 
 #[derive(Clone, Debug)]
@@ -45,12 +44,6 @@ impl SIMDRay {
         let inv_direction_y = direction_y.recip();
         let inv_direction_z = direction_z.recip();
 
-        let signs = [
-            f32x4::is_sign_negative(inv_direction_x),
-            f32x4::is_sign_negative(inv_direction_y),
-            f32x4::is_sign_negative(inv_direction_z)
-        ];
-
         SIMDRay {
             origin_x,
             origin_y,
@@ -60,8 +53,7 @@ impl SIMDRay {
             direction_z,
             inv_direction_x,
             inv_direction_y,
-            inv_direction_z,
-            signs
+            inv_direction_z
         }
     }
 
