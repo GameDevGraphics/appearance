@@ -76,7 +76,7 @@ impl SIMDRay {
         SIMDRay::new(&origins, &directions)
     }
 
-    fn origins(&self) -> [Vec3; 4] {
+    pub fn origins(&self) -> [Vec3; 4] {
         let mut result = [Vec3::default(); 4];
         result[0].x = self.origin_x.as_array()[0];
         result[1].x = self.origin_x.as_array()[1];
@@ -93,7 +93,7 @@ impl SIMDRay {
         result
     }
 
-    fn directions(&self) -> [Vec3; 4] {
+    pub fn directions(&self) -> [Vec3; 4] {
         let mut result = [Vec3::default(); 4];
         result[0].x = self.direction_x.as_array()[0];
         result[1].x = self.direction_x.as_array()[1];

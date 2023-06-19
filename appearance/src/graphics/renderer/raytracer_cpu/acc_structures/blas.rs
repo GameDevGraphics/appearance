@@ -311,6 +311,21 @@ impl<T: BLASPrimitive> BLAS<T> {
     }
 
     pub fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
+        // let origins = ray.origins();
+        // let directions = ray.directions();
+        // let mut intersections = [Intersection::default(); 4];
+        // for i in 0..4 {
+        //     intersections[i] = self.intersect(&Ray::new(&origins[i], &directions[i]), tmin, tmax);
+        // }
+        // let mut simd_intersection = SIMDIntersection::default();
+        // simd_intersection.t = std::simd::f32x4::from_array([
+        //     intersections[0].t,
+        //     intersections[1].t,
+        //     intersections[2].t,
+        //     intersections[3].t
+        // ]);
+        // return simd_intersection;
+
         let mut closest = SIMDIntersection::default();
         let mut stack = [None; 64];
         let mut stack_idx = 0;
@@ -340,23 +355,18 @@ impl<T: BLASPrimitive> BLAS<T> {
                 let mut dist1 = child1.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
                 let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
 
-                let mut child_indices = [
-                    [0, 1],
-                    [0, 1],
-                    [0, 1],
-                    [0, 1]
-                ];
+                let mut flip_childs = [false; 4];
 
                 for i in 0..4 {
                     if dist1[i] > dist2[i] {
                         std::mem::swap(&mut dist1[i], &mut dist2[i]);
-                        child_indices[i] = [1, 0];
+                        flip_childs[i] = true;
                     }
                 }
 
                 let mut missed_both = true;
                 for (i, d) in dist1.iter().enumerate() {
-                    if *d != f32::MAX && *d < closest.t.as_array()[i] {
+                    if *d < closest.t.as_array()[i] {
                         missed_both = false;
                         break;
                     }
@@ -370,22 +380,22 @@ impl<T: BLASPrimitive> BLAS<T> {
                         node = stack[stack_idx].unwrap();
                     }
                 } else {
-                    node = ([child1, child2])[child_indices[0][0]];
-
-                    let mut updated_node = false;
-                    for i in 0..4 {
-                        if dist2[i] != f32::MAX && dist2[i] < closest.t.as_array()[i] {
-                            node = ([child1, child2])[child_indices[i][0]];
-                            updated_node = true;
-
-                            stack[stack_idx] = Some(([child1, child2])[child_indices[i][1]]);
-                            stack_idx += 1;
+                    let mut any_hit_2 = false;
+                    let mut hit_2_idx = 0;
+                    for (i, d) in dist2.iter().enumerate() {
+                        if *d < closest.t.as_array()[i] {
+                            any_hit_2 = true;
+                            hit_2_idx = i;
                             break;
                         }
                     }
-
-                    if !updated_node {
-                        node = ([child1, child2])[child_indices[0][0]];
+                    
+                    if any_hit_2 {
+                        node = if flip_childs[hit_2_idx] { child2 } else { child1 };
+                        stack[stack_idx] = Some(if flip_childs[hit_2_idx] { child1 } else { child2 });
+                        stack_idx += 1;
+                    } else {
+                        node = if flip_childs[0] { child2 } else { child1 };
                     }
                 }
             }

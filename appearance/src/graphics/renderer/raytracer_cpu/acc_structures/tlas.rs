@@ -185,23 +185,18 @@ impl TLAS {
                 let mut dist1 = child1.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
                 let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
 
-                let mut child_indices = [
-                    [0, 1],
-                    [0, 1],
-                    [0, 1],
-                    [0, 1]
-                ];
+                let mut flip_childs = [false; 4];
 
                 for i in 0..4 {
                     if dist1[i] > dist2[i] {
                         std::mem::swap(&mut dist1[i], &mut dist2[i]);
-                        child_indices[i] = [1, 0];
+                        flip_childs[i] = true;
                     }
                 }
 
                 let mut missed_both = true;
                 for (i, d) in dist1.iter().enumerate() {
-                    if *d != f32::MAX && *d < closest.t.as_array()[i] {
+                    if *d < closest.t.as_array()[i] {
                         missed_both = false;
                         break;
                     }
@@ -215,20 +210,22 @@ impl TLAS {
                         node = stack[stack_idx].unwrap();
                     }
                 } else {
-                    let mut updated_node = false;
-                    for i in 0..4 {
-                        if dist2[i] != f32::MAX && dist2[i] < closest.t.as_array()[i] {
-                            node = ([child1, child2])[child_indices[i][0]];
-                            updated_node = true;
-
-                            stack[stack_idx] = Some(([child1, child2])[child_indices[i][1]]);
-                            stack_idx += 1;
+                    let mut any_hit_2 = false;
+                    let mut hit_2_idx = 0;
+                    for (i, d) in dist2.iter().enumerate() {
+                        if *d < closest.t.as_array()[i] {
+                            any_hit_2 = true;
+                            hit_2_idx = i;
                             break;
                         }
                     }
                     
-                    if !updated_node {
-                        node = ([child1, child2])[child_indices[0][0]];
+                    if any_hit_2 {
+                        node = if flip_childs[hit_2_idx] { child2 } else { child1 };
+                        stack[stack_idx] = Some(if flip_childs[hit_2_idx] { child1 } else { child2 });
+                        stack_idx += 1;
+                    } else {
+                        node = if flip_childs[0] { child2 } else { child1 };
                     }
                 }
             }

@@ -183,9 +183,9 @@ impl RaytracerCPU {
             //         if closest_hit.hit() {
             //             let cold = Vec3::new(0.0, 1.0, 0.0);
             //             let hot = Vec3::new(1.0, 0.0, 0.0);
-            //             let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
+            //             //let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
             //             //let color = cold.lerp(hot, t);
-            //             let color = Vec3::ONE.lerp(Vec3::ZERO, closest_hit.t * 0.1);
+            //             let color = Vec3::ONE;//.lerp(Vec3::ZERO, closest_hit.t * 0.1);
                     
             //             if let Ok(mut framebuffer) = framebuffer.lock() {
             //                 framebuffer.set_pixel(x as u32, y as u32, &color);
@@ -198,8 +198,8 @@ impl RaytracerCPU {
             //     }
             // }
 
-            let range_x = ((chunk_x * chunk_size) / 2)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize)  / 2);
-            let range_y = ((chunk_y * chunk_size) / 2)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize) / 2);
+            let range_x = ((chunk_x * chunk_size) / 2)..(((chunk_x + 1) * chunk_size / 2).clamp(0, width as usize));
+            let range_y = ((chunk_y * chunk_size) / 2)..(((chunk_y + 1) * chunk_size / 2).clamp(0, height as usize));
 
             for x in range_x {
                 for y in range_y.clone() {

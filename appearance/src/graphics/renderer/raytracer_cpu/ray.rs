@@ -18,7 +18,7 @@ pub struct Triangle {
     pub p2: Vec3
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Intersection {
     pub t: f32,
     pub uv: Vec2,
@@ -184,6 +184,21 @@ impl BLASPrimitive for Triangle {
     }
 
     fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
+        // let origins = ray.origins();
+        // let directions = ray.directions();
+        // let mut intersections = [Intersection::default(); 4];
+        // for i in 0..4 {
+        //     intersections[i] = self.intersect(&Ray::new(&origins[i], &directions[i]), tmin, tmax);
+        // }
+        // let mut simd_intersection = SIMDIntersection::default();
+        // simd_intersection.t = f32x4::from_array([
+        //     intersections[0].t,
+        //     intersections[1].t,
+        //     intersections[2].t,
+        //     intersections[3].t
+        // ]);
+        // return simd_intersection;
+
         let edge1 = self.p1 - self.p0;
         let edge2 = self.p2 - self.p0;
 
@@ -206,8 +221,8 @@ impl BLASPrimitive for Triangle {
         //     return Intersection::default();
         // }
         // let inv_det = 1.0 / det;
-        let mut dead_rays = det.simd_gt(f32x4::splat(-0.0000001));
-        dead_rays &= det.simd_lt(f32x4::splat(0.0000001));
+        let mut dead_rays = det.simd_gt(f32x4::splat(-0.00000001));
+        dead_rays &= det.simd_lt(f32x4::splat(0.00000001));
         if dead_rays.all() {
             return SIMDIntersection::default();
         }
@@ -387,6 +402,21 @@ impl AABB {
     }
 
     pub fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
+        // let origins = ray.origins();
+        // let directions = ray.directions();
+        // let mut intersections = [Intersection::default(); 4];
+        // for i in 0..4 {
+        //     intersections[i] = self.intersect(&Ray::new(&origins[i], &directions[i]), tmin, tmax);
+        // }
+        // let mut simd_intersection = SIMDIntersection::default();
+        // simd_intersection.t = f32x4::from_array([
+        //     intersections[0].t,
+        //     intersections[1].t,
+        //     intersections[2].t,
+        //     intersections[3].t
+        // ]);
+        // return simd_intersection;
+
         // let mut txmin = (self.bounds[ray.signs[0] as usize].x - ray.origin.x) * ray.inv_direction.x;
         let signs0 = ray.signs[0].to_array();
         let bounds_x = f32x4::from_array([

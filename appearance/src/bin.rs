@@ -11,7 +11,10 @@ fn main() {
 struct GameState {
     helmet_ids: Vec<Rc<MeshRendererID>>,
     timer: Timer,
-    delta_timer: Timer
+    delta_timer: Timer,
+
+    camera_yaw: f32,
+    camera_pitch: f32
 }
 
 fn init(resources: &mut Resources, graphics: &mut Graphics) -> GameState {
@@ -31,16 +34,21 @@ fn init(resources: &mut Resources, graphics: &mut Graphics) -> GameState {
                 helmet_ids.push(helmet_id);
             }
         }
-    }    
+    }
 
     GameState {
         helmet_ids,
         timer: Timer::new(),
-        delta_timer: Timer::new()
+        delta_timer: Timer::new(),
+        camera_yaw: 0.0,
+        camera_pitch: 0.0
     }
 }
 
 fn update(app: &mut AppState<GameState>) {
+    let window = app.graphics.window();
+    app.input.set_cursor_mode(CursorMode::LOCKED, window);
+
     // FPS Counter
     let dt = app.user_state.delta_timer.elapsed() as f32;
     let time = app.user_state.timer.elapsed() as f32;
@@ -51,25 +59,36 @@ fn update(app: &mut AppState<GameState>) {
     let camera = app.graphics.camera();
     let mut dir = Vec3::ZERO;
     if app.input.key(VirtualKeyCode::W) {
-        dir += Vec3::new(0.0, 0.0, 1.0);
+        dir += camera.forward();
     }
     if app.input.key(VirtualKeyCode::S) {
-        dir += Vec3::new(0.0, 0.0, -1.0);
+        dir += -camera.forward();
     }
     if app.input.key(VirtualKeyCode::A) {
-        dir += Vec3::new(-1.0, 0.0, 0.0);
+        dir += -camera.right();
     }
     if app.input.key(VirtualKeyCode::D) {
-        dir += Vec3::new(1.0, 0.0, 0.0);
+        dir += camera.right();
     }
     if app.input.key(VirtualKeyCode::Q) {
-        dir += Vec3::new(0.0, -1.0, 0.0);
+        dir += -camera.up();
     }
     if app.input.key(VirtualKeyCode::E) {
-        dir += Vec3::new(0.0, 1.0, 0.0);
+        dir += camera.up();
     }
     let pos = *camera.get_position() + dir * dt * 1.0;
     camera.set_position(&pos);
+
+    let look_offset = app.input.mouse_delta() * -60.0 * dt;
+    app.user_state.camera_pitch += look_offset.y;
+    app.user_state.camera_yaw += look_offset.x;
+    app.user_state.camera_pitch = (app.user_state.camera_pitch).clamp(-90.0, 90.0);
+    camera.set_rotation(&Quat::from_euler(
+        EulerRot::XYZ,
+        (app.user_state.camera_pitch).to_radians(),
+        (app.user_state.camera_yaw).to_radians(),
+        0.0)
+    );
 
     // Remove first helmet
     if app.input.key_down(VirtualKeyCode::Space) {

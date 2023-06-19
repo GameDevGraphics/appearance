@@ -41,6 +41,18 @@ impl Camera {
         }
     }
 
+    pub fn forward(&self) -> Vec3 {
+        self.rotation * Vec3::new(0.0, 0.0, 1.0)
+    }
+
+    pub fn right(&self) -> Vec3 {
+        self.rotation * Vec3::new(1.0, 0.0, 0.0)
+    }
+
+    pub fn up(&self) -> Vec3 {
+        self.rotation * Vec3::new(0.0, 1.0, 0.0)
+    }
+
     pub fn get_position(&self) -> &Vec3 {
         &self.position
     }
@@ -98,7 +110,7 @@ impl Camera {
     fn recalculate_view(&mut self) {
         if self.dirty_view {
             self.dirty_view = false;
-            self.view_matrix = Mat4::from_translation(self.position) * Mat4::from_quat(self.rotation);
+            self.view_matrix = Mat4::from_quat(self.rotation) * Mat4::from_translation(self.position);
             self.view_inv_matrix = self.view_matrix.inverse();
         }
     }
