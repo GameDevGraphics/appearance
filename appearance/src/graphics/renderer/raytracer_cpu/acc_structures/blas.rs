@@ -297,7 +297,7 @@ impl<T: BLASPrimitive> BLAS<T> {
                     }
                 } else {
                     node = child1;
-                    if dist2 != f32::MAX {
+                    if dist2 != f32::MAX && dist2 < closest.t {
                         stack[stack_idx] = Some(child2);
                         stack_idx += 1;
                     }
@@ -374,7 +374,7 @@ impl<T: BLASPrimitive> BLAS<T> {
 
                     let mut updated_node = false;
                     for i in 0..4 {
-                        if dist2[i] != f32::MAX {
+                        if dist2[i] != f32::MAX && dist2[i] < closest.t.as_array()[i] {
                             node = ([child1, child2])[child_indices[i][0]];
                             updated_node = true;
 
