@@ -1,4 +1,4 @@
-use super::{Ray, AABB, Intersection, SIMDRay, SIMDIntersection};
+use super::{Ray, AABB, Intersection, SIMDRayGeneric, SIMDIntersectionGeneric};
 
 pub mod tlas;
 pub use tlas::*;

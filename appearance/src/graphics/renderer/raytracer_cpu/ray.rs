@@ -1,14 +1,13 @@
 use glam::*;
 use std::simd::*;
 use super::acc_structures::BLASPrimitive;
-use super::{SIMDRay, SIMDIntersection};
+use super::{SIMDRayGeneric, SIMDIntersectionGeneric};
 
 #[derive(Clone, Debug)]
 pub struct Ray {
     origin: Vec3,
     direction: Vec3,
-    inv_direction: Vec3,
-    signs: [bool; 3]
+    inv_direction: Vec3
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -69,15 +68,16 @@ impl Triangle {
         }
     }
 
-    fn cross_simd(
-        a_x: f32x4,
-        a_y: f32x4,
-        a_z: f32x4,
+    fn cross_simd<const LANES: usize>(
+        a_x: Simd<f32, LANES>,
+        a_y: Simd<f32, LANES>,
+        a_z: Simd<f32, LANES>,
         b: Vec3
-    ) -> (f32x4, f32x4, f32x4) {
-        let b_x = f32x4::splat(b.x);
-        let b_y = f32x4::splat(b.y);
-        let b_z = f32x4::splat(b.z);
+    ) -> (Simd<f32, LANES>, Simd<f32, LANES>, Simd<f32, LANES>)
+    where LaneCount<LANES>: SupportedLaneCount {
+        let b_x = Simd::<f32, LANES>::splat(b.x);
+        let b_y = Simd::<f32, LANES>::splat(b.y);
+        let b_z = Simd::<f32, LANES>::splat(b.z);
         let c_x = (a_y * b_z) - (b_y * a_z);
         let c_y = (a_z * b_x) - (b_z * a_x);
         let c_z = (a_x * b_y) - (b_x * a_y);
@@ -85,26 +85,28 @@ impl Triangle {
         (c_x, c_y, c_z)
     }
 
-    fn dot_simd(
-        a_x: f32x4,
-        a_y: f32x4,
-        a_z: f32x4,
-        b_x: f32x4,
-        b_y: f32x4,
-        b_z: f32x4,
-    ) -> f32x4 {
+    fn dot_simd<const LANES: usize>(
+        a_x: Simd<f32, LANES>,
+        a_y: Simd<f32, LANES>,
+        a_z: Simd<f32, LANES>,
+        b_x: Simd<f32, LANES>,
+        b_y: Simd<f32, LANES>,
+        b_z: Simd<f32, LANES>,
+    ) -> Simd<f32, LANES>
+    where LaneCount<LANES>: SupportedLaneCount {
         (a_x * b_x) + (a_y * b_y) + (a_z * b_z)
     }
 
-    fn dot_simd_single(
-        a_x: f32x4,
-        a_y: f32x4,
-        a_z: f32x4,
+    fn dot_simd_single<const LANES: usize>(
+        a_x: Simd<f32, LANES>,
+        a_y: Simd<f32, LANES>,
+        a_z: Simd<f32, LANES>,
         b: Vec3
-    ) -> f32x4 {
-        let b_x = f32x4::splat(b.x);
-        let b_y = f32x4::splat(b.y);
-        let b_z = f32x4::splat(b.z);
+    ) -> Simd<f32, LANES>
+    where LaneCount<LANES>: SupportedLaneCount {
+        let b_x = Simd::<f32, LANES>::splat(b.x);
+        let b_y = Simd::<f32, LANES>::splat(b.y);
+        let b_z = Simd::<f32, LANES>::splat(b.z);
         Self::dot_simd(a_x, a_y, a_z, b_x, b_y, b_z)
     }
 }
@@ -182,7 +184,11 @@ impl BLASPrimitive for Triangle {
         }
     }
 
-    fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
+    fn intersect_simd<const LANES: usize>(&self,
+        ray: &SIMDRayGeneric<LANES>,
+        tmin: f32, tmax: f32
+    ) -> SIMDIntersectionGeneric<LANES>
+    where LaneCount<LANES>: SupportedLaneCount {
         let edge1 = self.p1 - self.p0;
         let edge2 = self.p2 - self.p0;
 
@@ -205,17 +211,17 @@ impl BLASPrimitive for Triangle {
         //     return Intersection::default();
         // }
         // let inv_det = 1.0 / det;
-        let mut dead_rays = det.simd_gt(f32x4::splat(-0.00000001));
-        dead_rays &= det.simd_lt(f32x4::splat(0.00000001));
+        let mut dead_rays = det.simd_gt(Simd::<f32, LANES>::splat(-0.00000001));
+        dead_rays &= det.simd_lt(Simd::<f32, LANES>::splat(0.00000001));
         if dead_rays.all() {
-            return SIMDIntersection::default();
+            return SIMDIntersectionGeneric::default();
         }
         let inv_det = det.recip();
 
         // let tvec = ray.origin - self.p0;
-        let tvec_x = ray.origin_x - f32x4::splat(self.p0.x);
-        let tvec_y = ray.origin_y - f32x4::splat(self.p0.y);
-        let tvec_z = ray.origin_z - f32x4::splat(self.p0.z);
+        let tvec_x = ray.origin_x - Simd::<f32, LANES>::splat(self.p0.x);
+        let tvec_y = ray.origin_y - Simd::<f32, LANES>::splat(self.p0.y);
+        let tvec_z = ray.origin_z - Simd::<f32, LANES>::splat(self.p0.z);
         // u = tvec.dot(pvec) * inv_det;
         let u = Self::dot_simd(
             pvec_x,
@@ -229,9 +235,9 @@ impl BLASPrimitive for Triangle {
         // if u < 0.0 || u > 1.0 {
         //     return Intersection::default();
         // }
-        dead_rays |= u.simd_lt(f32x4::splat(0.0)) | u.simd_gt(f32x4::splat(1.0));
+        dead_rays |= u.simd_lt(Simd::<f32, LANES>::splat(0.0)) | u.simd_gt(Simd::<f32, LANES>::splat(1.0));
         if dead_rays.all() {
-            return SIMDIntersection::default();
+            return SIMDIntersectionGeneric::default();
         }
 
         // let qvec = tvec.cross(edge1);
@@ -254,9 +260,9 @@ impl BLASPrimitive for Triangle {
         // if v < 0.0 || u + v > 1.0 {
         //     return Intersection::default();
         // }
-        dead_rays |= v.simd_lt(f32x4::splat(0.0)) | (u + v).simd_gt(f32x4::splat(1.0));
+        dead_rays |= v.simd_lt(Simd::<f32, LANES>::splat(0.0)) | (u + v).simd_gt(Simd::<f32, LANES>::splat(1.0));
         if dead_rays.all() {
-            return SIMDIntersection::default();
+            return SIMDIntersectionGeneric::default();
         }
 
         // t = edge2.dot(qvec) * inv_det;
@@ -268,10 +274,10 @@ impl BLASPrimitive for Triangle {
         ) * inv_det;
 
         // Replace dead rays t with f32::MAX
-        let diff = f32x4::splat(f32::MAX) - t;
-        t += diff * f32x4::from_array(dead_rays.to_array().map(|x| x as i32 as f32));
+        let diff = Simd::<f32, LANES>::splat(f32::MAX) - t;
+        t += diff * Simd::<f32, LANES>::from_array(dead_rays.to_array().map(|x| x as i32 as f32));
         
-        SIMDIntersection {
+        SIMDIntersectionGeneric {
             t,
             u,
             v,
@@ -364,26 +370,30 @@ impl AABB {
         }
     }
 
-    pub fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
-        let tx1 = (f32x4::splat(self.min.x) - ray.origin_x) * ray.inv_direction_x;
-        let tx2 = (f32x4::splat(self.max.x) - ray.origin_x) * ray.inv_direction_x;
+    pub fn intersect_simd<const LANES: usize>(&self,
+        ray: &SIMDRayGeneric<LANES>,
+        tmin: f32, tmax: f32
+    ) -> SIMDIntersectionGeneric<LANES>
+    where LaneCount<LANES>: SupportedLaneCount {
+        let tx1 = (Simd::<f32, LANES>::splat(self.min.x) - ray.origin_x) * ray.inv_direction_x;
+        let tx2 = (Simd::<f32, LANES>::splat(self.max.x) - ray.origin_x) * ray.inv_direction_x;
         let mut tmin = tx1.simd_min(tx2);
         let mut tmax = tx1.simd_max(tx2);
 
-        let ty1 = (f32x4::splat(self.min.y) - ray.origin_y) * ray.inv_direction_y;
-        let ty2 = (f32x4::splat(self.max.y) - ray.origin_y) * ray.inv_direction_y;
+        let ty1 = (Simd::<f32, LANES>::splat(self.min.y) - ray.origin_y) * ray.inv_direction_y;
+        let ty2 = (Simd::<f32, LANES>::splat(self.max.y) - ray.origin_y) * ray.inv_direction_y;
         tmin = ty1.simd_min(ty2).simd_max(tmin);
         tmax = ty1.simd_max(ty2).simd_min(tmax);
 
-        let tz1 = (f32x4::splat(self.min.z) - ray.origin_z) * ray.inv_direction_z;
-        let tz2 = (f32x4::splat(self.max.z) - ray.origin_z) * ray.inv_direction_z;
+        let tz1 = (Simd::<f32, LANES>::splat(self.min.z) - ray.origin_z) * ray.inv_direction_z;
+        let tz2 = (Simd::<f32, LANES>::splat(self.max.z) - ray.origin_z) * ray.inv_direction_z;
         tmin = tz1.simd_min(tz2).simd_max(tmin);
         tmax = tz1.simd_max(tz2).simd_min(tmax);
 
-        let cmp = tmax.simd_ge(tmin) & tmax.simd_ge(f32x4::splat(0.0));
-        let diff = f32x4::splat(f32::MAX) - tmin;
-        let tmin = tmin + diff * f32x4::from_array(cmp.to_array().map(|x| (!x) as i32 as f32));
-        SIMDIntersection {
+        let cmp = tmax.simd_ge(tmin) & tmax.simd_ge(Simd::<f32, LANES>::splat(0.0));
+        let diff = Simd::<f32, LANES>::splat(f32::MAX) - tmin;
+        let tmin = tmin + diff * Simd::<f32, LANES>::from_array(cmp.to_array().map(|x| (!x) as i32 as f32));
+        SIMDIntersectionGeneric {
             t: tmin,
             ..Default::default()
         }
@@ -394,17 +404,11 @@ impl Ray {
     #[inline]
     pub fn new(origin: &Vec3, direction: &Vec3) -> Self {
         let inv_direction = 1.0 / *direction;
-        let signs = [
-            inv_direction.x < 0.0,
-            inv_direction.y < 0.0,
-            inv_direction.z < 0.0
-        ];
         
         Ray {
             origin: *origin,
             direction: *direction,
-            inv_direction,
-            signs
+            inv_direction
         }
     }
 

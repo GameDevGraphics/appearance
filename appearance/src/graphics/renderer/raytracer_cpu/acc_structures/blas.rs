@@ -1,6 +1,8 @@
 use glam::*;
 use crate::Timer;
-use super::{Ray, AABB, Intersection, SIMDRay, SIMDIntersection};
+use super::{Ray, AABB, Intersection, SIMDRayGeneric, SIMDIntersectionGeneric};
+
+use std::simd::*;
 
 /*****************************************************************************
 *                               PUB STRUCTS
@@ -24,7 +26,8 @@ pub trait BLASPrimitive {
     fn centroid(&self) -> Vec3;
     fn expand_aabb(&self, aabb: &mut AABB);
     fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection;
-    fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection;
+    fn intersect_simd<const LANES: usize>(&self, ray: &SIMDRayGeneric<LANES>, tmin: f32, tmax: f32)
+        -> SIMDIntersectionGeneric<LANES> where LaneCount<LANES>: SupportedLaneCount;
 }
 
 pub struct BLASInstance {
@@ -310,23 +313,12 @@ impl<T: BLASPrimitive> BLAS<T> {
         closest
     }
 
-    pub fn intersect_simd(&self, ray: &SIMDRay, tmin: f32, tmax: f32) -> SIMDIntersection {
-        // let origins = ray.origins();
-        // let directions = ray.directions();
-        // let mut intersections = [Intersection::default(); 4];
-        // for i in 0..4 {
-        //     intersections[i] = self.intersect(&Ray::new(&origins[i], &directions[i]), tmin, tmax);
-        // }
-        // let mut simd_intersection = SIMDIntersection::default();
-        // simd_intersection.t = std::simd::f32x4::from_array([
-        //     intersections[0].t,
-        //     intersections[1].t,
-        //     intersections[2].t,
-        //     intersections[3].t
-        // ]);
-        // return simd_intersection;
-
-        let mut closest = SIMDIntersection::default();
+    pub fn intersect_simd<const LANES: usize>(&self,
+        ray: &SIMDRayGeneric<LANES>,
+        tmin: f32, tmax: f32
+    ) -> SIMDIntersectionGeneric<LANES>
+    where LaneCount<LANES>: SupportedLaneCount {
+        let mut closest = SIMDIntersectionGeneric::default();
         let mut stack = [None; 64];
         let mut stack_idx = 0;
         let mut node = &self.nodes[0];
@@ -355,8 +347,8 @@ impl<T: BLASPrimitive> BLAS<T> {
                 let mut dist1 = child1.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
                 let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
 
-                let mut flip_childs = [false; 4];
-                for i in 0..4 {
+                let mut flip_childs = [false; LANES];
+                for i in 0..LANES {
                     if dist1[i] > dist2[i] {
                         std::mem::swap(&mut dist1[i], &mut dist2[i]);
                         flip_childs[i] = true;
@@ -364,14 +356,14 @@ impl<T: BLASPrimitive> BLAS<T> {
                 }
 
                 // This crap can be reduced into 2 simd operations
-                let mut hit1 = [false; 4];
-                let mut hit2 = [false; 4];
-                for i in 0..4 {
+                let mut hit1 = [false; LANES];
+                let mut hit2 = [false; LANES];
+                for i in 0..LANES {
                     hit1[i] = dist1[i] < closest.t.as_array()[i];
                     hit2[i] = dist2[i] < closest.t.as_array()[i];
                 }
                 let mut missed_both = true;
-                for i in 0..4 {
+                for i in 0..LANES {
                     if hit1[i] || hit2[i] {
                         missed_both = false;
                     }
@@ -387,10 +379,10 @@ impl<T: BLASPrimitive> BLAS<T> {
                 } else {
                     // Check if all rays that hit have the same node as closest
                     let mut both_hit_as_closest = true;
-                    let mut hit1_indices = [0; 4];
+                    let mut hit1_indices = [0; LANES];
                     let mut hit1_count = 0;
                     let mut last_hit_flip = -1;
-                    for i in 0..4 {
+                    for i in 0..LANES {
                         if hit1[i] {
                             if last_hit_flip != -1 && last_hit_flip != flip_childs[i] as i32 {
                                 both_hit_as_closest = false;
@@ -433,7 +425,7 @@ impl<T: BLASPrimitive> BLAS<T> {
             }
         }
 
-        closest.heat = std::simd::i32x4::splat(heat);
+        closest.heat = Simd::<i32, LANES>::splat(heat);
 
         closest
     }
@@ -470,7 +462,12 @@ impl BLASInstance {
         blases[self.blas_idx as usize].intersect(&transformed_ray, tmin, tmax)
     }
 
-    pub fn intersect_simd<T: BLASPrimitive>(&self, ray: &SIMDRay, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> SIMDIntersection {
+    pub fn intersect_simd<const LANES: usize, T: BLASPrimitive>(&self,
+        ray: &SIMDRayGeneric<LANES>,
+        tmin: f32, tmax: f32,
+        blases: &[&BLAS<T>]
+    ) -> SIMDIntersectionGeneric<LANES>
+    where LaneCount<LANES>: SupportedLaneCount {
         let transformed_ray = ray.apply_transform(&self.inv_transform);
         blases[self.blas_idx as usize].intersect_simd(&transformed_ray, tmin, tmax)
     }

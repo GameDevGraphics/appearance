@@ -1,50 +1,56 @@
 use glam::*;
 use std::simd::*;
 
+pub type SIMDRay = SIMDRayGeneric<16>;
+pub type SIMDIntersection = SIMDIntersectionGeneric<16>;
+
 /*****************************************************************************
 *                               PUB STRUCTS
 ******************************************************************************/
 
 #[derive(Clone, Debug)]
-pub struct SIMDRay {
-    pub origin_x: f32x4,
-    pub origin_y: f32x4,
-    pub origin_z: f32x4,
-    pub direction_x: f32x4,
-    pub direction_y: f32x4,
-    pub direction_z: f32x4,
-    pub inv_direction_x: f32x4,
-    pub inv_direction_y: f32x4,
-    pub inv_direction_z: f32x4
+pub struct SIMDRayGeneric<const LANES: usize>
+where LaneCount<LANES>: SupportedLaneCount {
+    pub origin_x:           Simd<f32, LANES>,
+    pub origin_y:           Simd<f32, LANES>,
+    pub origin_z:           Simd<f32, LANES>,
+    pub direction_x:        Simd<f32, LANES>,
+    pub direction_y:        Simd<f32, LANES>,
+    pub direction_z:        Simd<f32, LANES>,
+    pub inv_direction_x:    Simd<f32, LANES>,
+    pub inv_direction_y:    Simd<f32, LANES>,
+    pub inv_direction_z:    Simd<f32, LANES>
 }
 
 #[derive(Clone, Debug)]
-pub struct SIMDIntersection {
-    pub t: f32x4,
-    pub u: f32x4,
-    pub v: f32x4,
-    pub heat: i32x4
+pub struct SIMDIntersectionGeneric<const LANES: usize>
+where LaneCount<LANES>: SupportedLaneCount {
+    pub t:      Simd<f32, LANES>,
+    pub u:      Simd<f32, LANES>,
+    pub v:      Simd<f32, LANES>,
+    pub heat:   Simd<i32, LANES>
 }
 
 /*****************************************************************************
 *                               IMPLEMENTATIONS
 ******************************************************************************/
 
-impl SIMDRay {
+impl<const LANES: usize> SIMDRayGeneric<LANES>
+where LaneCount<LANES>: SupportedLaneCount {
     #[inline]
-    pub fn new(origin: &[Vec3; 4], direction: &[Vec3; 4]) -> Self {
-        let origin_x = f32x4::from_array([origin[0].x, origin[1].x, origin[2].x, origin[3].x]);
-        let origin_y = f32x4::from_array([origin[0].y, origin[1].y, origin[2].y, origin[3].y]);
-        let origin_z = f32x4::from_array([origin[0].z, origin[1].z, origin[2].z, origin[3].z]);
-        let direction_x = f32x4::from_array([direction[0].x, direction[1].x, direction[2].x, direction[3].x]);
-        let direction_y = f32x4::from_array([direction[0].y, direction[1].y, direction[2].y, direction[3].y]);
-        let direction_z = f32x4::from_array([direction[0].z, direction[1].z, direction[2].z, direction[3].z]);
+    pub fn new(origin: &[Vec3; LANES], direction: &[Vec3; LANES]) -> Self {
+        let origin_x = Simd::<f32, LANES>::from_array(origin.map(|o| o.x));
+        let origin_y = Simd::<f32, LANES>::from_array(origin.map(|o| o.y));
+        let origin_z = Simd::<f32, LANES>::from_array(origin.map(|o| o.z));
+        let direction_x = Simd::<f32, LANES>::from_array(direction.map(|d| d.x));
+        let direction_y = Simd::<f32, LANES>::from_array(direction.map(|d| d.y));
+        let direction_z = Simd::<f32, LANES>::from_array(direction.map(|d| d.z));
 
         let inv_direction_x = direction_x.recip();
         let inv_direction_y = direction_y.recip();
         let inv_direction_z = direction_z.recip();
 
-        SIMDRay {
+        SIMDRayGeneric {
             origin_x,
             origin_y,
             origin_z,
@@ -57,64 +63,52 @@ impl SIMDRay {
         }
     }
 
-    pub fn apply_transform(&self, inv_transform: &Mat4) -> SIMDRay {
+    pub fn apply_transform(&self, inv_transform: &Mat4) -> SIMDRayGeneric<LANES> {
         let mut origins = self.origins();
         let mut directions = self.directions();
-        for i in 0..4 {
+        for i in 0..LANES {
             origins[i] = (*inv_transform * Vec4::from((origins[i], 1.0))).xyz();
             directions[i] = (*inv_transform * Vec4::from((directions[i], 0.0))).xyz();
         }
 
-        SIMDRay::new(&origins, &directions)
+        Self::new(&origins, &directions)
     }
 
-    pub fn origins(&self) -> [Vec3; 4] {
-        let mut result = [Vec3::default(); 4];
-        result[0].x = self.origin_x.as_array()[0];
-        result[1].x = self.origin_x.as_array()[1];
-        result[2].x = self.origin_x.as_array()[2];
-        result[3].x = self.origin_x.as_array()[3];
-        result[0].y = self.origin_y.as_array()[0];
-        result[1].y = self.origin_y.as_array()[1];
-        result[2].y = self.origin_y.as_array()[2];
-        result[3].y = self.origin_y.as_array()[3];
-        result[0].z = self.origin_z.as_array()[0];
-        result[1].z = self.origin_z.as_array()[1];
-        result[2].z = self.origin_z.as_array()[2];
-        result[3].z = self.origin_z.as_array()[3];
+    pub fn origins(&self) -> [Vec3; LANES] {
+        let mut result = [Vec3::default(); LANES];
+        for i in 0..LANES {
+            result[i].x = self.origin_x.as_array()[i];
+            result[i].y = self.origin_y.as_array()[i];
+            result[i].z = self.origin_z.as_array()[i];
+        }
         result
     }
 
-    pub fn directions(&self) -> [Vec3; 4] {
-        let mut result = [Vec3::default(); 4];
-        result[0].x = self.direction_x.as_array()[0];
-        result[1].x = self.direction_x.as_array()[1];
-        result[2].x = self.direction_x.as_array()[2];
-        result[3].x = self.direction_x.as_array()[3];
-        result[0].y = self.direction_y.as_array()[0];
-        result[1].y = self.direction_y.as_array()[1];
-        result[2].y = self.direction_y.as_array()[2];
-        result[3].y = self.direction_y.as_array()[3];
-        result[0].z = self.direction_z.as_array()[0];
-        result[1].z = self.direction_z.as_array()[1];
-        result[2].z = self.direction_z.as_array()[2];
-        result[3].z = self.direction_z.as_array()[3];
+    pub fn directions(&self) -> [Vec3; LANES] {
+        let mut result = [Vec3::default(); LANES];
+        for i in 0..LANES {
+            result[i].x = self.direction_x.as_array()[i];
+            result[i].y = self.direction_y.as_array()[i];
+            result[i].z = self.direction_z.as_array()[i];
+        }
         result
     }
 }
 
-impl Default for SIMDIntersection {
+impl<const LANES: usize> Default for SIMDIntersectionGeneric<LANES>
+where LaneCount<LANES>: SupportedLaneCount {
     fn default() -> Self {
-        SIMDIntersection {
-            t: f32x4::splat(f32::MAX),
-            u: f32x4::splat(0.0),
-            v: f32x4::splat(0.0),
-            heat: i32x4::splat(0)
+        SIMDIntersectionGeneric {
+            t: Simd::<f32, LANES>::splat(f32::MAX),
+            u: Simd::<f32, LANES>::splat(0.0),
+            v: Simd::<f32, LANES>::splat(0.0),
+            heat: Simd::<i32, LANES>::splat(0)
         }
     }
 }
 
-impl SIMDIntersection {
+impl<const LANES: usize> SIMDIntersectionGeneric<LANES>
+where LaneCount<LANES>: SupportedLaneCount {
     pub fn hit(&self, i: usize) -> bool {
         self.t.as_array()[i] != f32::MAX
     }
@@ -123,15 +117,15 @@ impl SIMDIntersection {
         self.heat.as_array()[i]
     }
 
-    pub fn store_closest(&mut self, other: &SIMDIntersection) {
+    pub fn store_closest(&mut self, other: &SIMDIntersectionGeneric<LANES>) {
         let cmp = other.t.simd_lt(self.t);
 
         self.t = self.t.simd_min(other.t);
         let diff = other.u - self.u;
-        self.u += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
+        self.u += diff * Simd::<f32, LANES>::from_array(cmp.to_array().map(|x| x as i32 as f32));
         let diff = other.v - self.v;
-        self.v += diff * f32x4::from_array(cmp.to_array().map(|x| x as i32 as f32));
+        self.v += diff * Simd::<f32, LANES>::from_array(cmp.to_array().map(|x| x as i32 as f32));
         let diff = other.heat - self.heat;
-        self.heat += diff * i32x4::from_array(cmp.to_array().map(|x| x as i32));
+        self.heat += diff * Simd::<i32, LANES>::from_array(cmp.to_array().map(|x| x as i32));
     }
 }

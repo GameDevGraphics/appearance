@@ -159,7 +159,7 @@ impl RaytracerCPU {
         proj_inv_matrix: Mat4, view_inv_matrix: Mat4, origin: &Vec3,
         blases: &[&BLAS<Triangle>], tlas: &TLAS
     ) {
-        let chunk_size = 32;
+        let chunk_size = 32; // MUST BE MULTIPLE OF `SIMD_LANES`!
         let chunk_count_x = (width as f32 / chunk_size as f32).ceil() as usize;
         let chunk_count_y = (height as f32 / chunk_size as f32).ceil() as usize;
         let chunk_count = chunk_count_x * chunk_count_y;
@@ -198,43 +198,44 @@ impl RaytracerCPU {
             //     }
             // }
 
-            let range_x = ((chunk_x * chunk_size) / 2)..(((chunk_x + 1) * chunk_size / 2).clamp(0, width as usize));
-            let range_y = ((chunk_y * chunk_size) / 2)..(((chunk_y + 1) * chunk_size / 2).clamp(0, height as usize));
+            const SIMD_LANES: usize = 4;
+            let range_x = ((chunk_x * chunk_size) / SIMD_LANES)..(((chunk_x + 1) * chunk_size / SIMD_LANES).clamp(0, width as usize));
+            let range_y = ((chunk_y * chunk_size) / SIMD_LANES)..(((chunk_y + 1) * chunk_size / SIMD_LANES).clamp(0, height as usize));
 
             for x in range_x {
                 for y in range_y.clone() {
-                    let mut origins = [Vec3::ZERO; 4];
-                    let mut directions = [Vec3::ZERO; 4];
-                    for px in 0..2 {
-                        for py in 0..2 {
-                            let pixel_center = Vec2::new((x * 2 + px) as f32, (y * 2 + py) as f32) + Vec2::splat(0.5);
+                    let mut origins = [Vec3::ZERO; SIMD_LANES * SIMD_LANES];
+                    let mut directions = [Vec3::ZERO; SIMD_LANES * SIMD_LANES];
+                    for px in 0..SIMD_LANES {
+                        for py in 0..SIMD_LANES {
+                            let pixel_center = Vec2::new((x * SIMD_LANES + px) as f32, (y * SIMD_LANES + py) as f32) + Vec2::splat(0.5);
                             let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
                             let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
                             let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, -1.0, 1.0), 0.0));
 
-                            origins[px + py * 2] = *origin;
-                            directions[px + py * 2] = direction.xyz();
+                            origins[px + py * SIMD_LANES] = *origin;
+                            directions[px + py * SIMD_LANES] = direction.xyz();
                         }
                     }
                     
                     let ray = SIMDRay::new(&origins, &directions);
                     let intersection = tlas.intersect_simd(&ray, 0.01, 100.0, blases);
 
-                    for px in 0..2 {
-                        for py in 0..2 {
-                            if intersection.hit(px + py * 2) {
+                    for px in 0..SIMD_LANES {
+                        for py in 0..SIMD_LANES {
+                            if intersection.hit(px + py * SIMD_LANES) {
                                 if let Ok(mut framebuffer) = framebuffer.lock() {
-                                    let cold = Vec3::new(0.0, 1.0, 0.0);
-                                    let hot = Vec3::new(1.0, 0.0, 0.0);
-                                    let t = ((intersection.heat(px + py * 2) as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
-                                    //let color = cold.lerp(hot, t);
-                                    let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t.to_array()[px + py * 2] * 0.1);
+                                    // let cold = Vec3::new(0.0, 1.0, 0.0);
+                                    // let hot = Vec3::new(1.0, 0.0, 0.0);
+                                    // let t = ((intersection.heat(px + py * SIMD_LANES) as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
+                                    // let color = cold.lerp(hot, t);
+                                    let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t.to_array()[px + py * SIMD_LANES] * 0.1);
 
-                                    framebuffer.set_pixel((x * 2 + px) as u32, (y * 2 + py) as u32, &color);
+                                    framebuffer.set_pixel((x * SIMD_LANES + px) as u32, (y * SIMD_LANES + py) as u32, &color);
                                 }
                             } else {
                                 if let Ok(mut framebuffer) = framebuffer.lock() {
-                                    framebuffer.set_pixel((x * 2 + px) as u32, (y * 2 + py) as u32, &Vec3::ZERO);
+                                    framebuffer.set_pixel((x * SIMD_LANES + px) as u32, (y * SIMD_LANES + py) as u32, &Vec3::ZERO);
                                 }
                             }
                         }
