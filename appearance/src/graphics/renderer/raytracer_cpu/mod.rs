@@ -176,6 +176,7 @@ impl RaytracerCPU {
                 corner_rays.push(Ray::new(&origin.xyz(), &direction.xyz()));
             }
         }
+        let aabb = AABB::new(&Vec3::ZERO, &Vec3::ONE);
         let triangle = Triangle::new(&Vec3::new(-0.5, 0.0, 0.0), &Vec3::new(0.0, 1.0, 0.0), &Vec3::new(1.0, 0.0, 0.0));
         // let frustum = Frustum::new(
         //     &corner_rays[2],
@@ -189,8 +190,7 @@ impl RaytracerCPU {
             &corner_rays[2],
             &corner_rays[3]
         );
-
-        println!("Cull box: {}", triangle.intersect_frustum(&frustum));
+        println!("In frame: {}", aabb.intersect_frustum(&frustum));
         
         (0..chunk_count).into_par_iter().for_each(|chunk_idx| {
             let chunk_x = chunk_idx % chunk_count_x;
@@ -207,7 +207,7 @@ impl RaytracerCPU {
                 
                     let ray = Ray::new(origin, &direction.xyz());
 
-                    let closest_hit = triangle.intersect(&ray, 0.01, 100.0);
+                    let closest_hit = aabb.intersect(&ray, 0.01, 100.0);
                     if closest_hit.hit() {
                         let cold = Vec3::new(0.0, 1.0, 0.0);
                         let hot = Vec3::new(1.0, 0.0, 0.0);

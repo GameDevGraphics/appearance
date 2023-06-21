@@ -287,9 +287,9 @@ impl BLASPrimitive for Triangle {
 
     fn intersect_frustum(&self, frustum: &Frustum) -> bool {
         let corners = [
-            Vec4::from((self.p0, 1.0)),
-            Vec4::from((self.p1, 1.0)),
-            Vec4::from((self.p2, 1.0))
+            Vec4::from((-self.p0, 1.0)),
+            Vec4::from((-self.p1, 1.0)),
+            Vec4::from((-self.p2, 1.0))
         ];
 
         let mut outside_n1 = 0;
@@ -303,6 +303,7 @@ impl BLASPrimitive for Triangle {
             if frustum.n4.dot(corner) < 0.0 { outside_n4 += 1; }
         }
 
+        println!("{} {} {} {}", outside_n1, outside_n2, outside_n3, outside_n4);
         !(outside_n1 == 3 || outside_n2 == 3 || outside_n3 == 3 || outside_n4 == 3)
     }
 }
@@ -366,17 +367,17 @@ impl AABB {
     }
 
     #[inline]
-    pub fn corners_vec4(&self) -> [Vec4; 8] {
+    fn inv_corners_vec4(&self) -> [Vec4; 8] {
         [
-            Vec4::new(self.min.x, self.min.y, self.min.z, 1.0),
-            Vec4::new(self.max.x, self.min.y, self.min.z, 1.0),
-            Vec4::new(self.max.x, self.min.y, self.max.z, 1.0),
-            Vec4::new(self.min.x, self.min.y, self.max.z, 1.0),
+            Vec4::new(-self.min.x, -self.min.y, -self.min.z, 1.0),
+            Vec4::new(-self.max.x, -self.min.y, -self.min.z, 1.0),
+            Vec4::new(-self.max.x, -self.min.y, -self.max.z, 1.0),
+            Vec4::new(-self.min.x, -self.min.y, -self.max.z, 1.0),
 
-            Vec4::new(self.min.x, self.max.y, self.min.z, 1.0),
-            Vec4::new(self.max.x, self.max.y, self.min.z, 1.0),
-            Vec4::new(self.max.x, self.max.y, self.max.z, 1.0),
-            Vec4::new(self.min.x, self.max.y, self.max.z, 1.0)
+            Vec4::new(-self.min.x, -self.max.y, -self.min.z, 1.0),
+            Vec4::new(-self.max.x, -self.max.y, -self.min.z, 1.0),
+            Vec4::new(-self.max.x, -self.max.y, -self.max.z, 1.0),
+            Vec4::new(-self.min.x, -self.max.y, -self.max.z, 1.0)
         ]
     }
 
@@ -436,7 +437,7 @@ impl AABB {
     }
 
     pub fn intersect_frustum(&self, frustum: &Frustum) -> bool {
-        let corners = self.corners_vec4();
+        let corners = self.inv_corners_vec4();
 
         let mut outside_n1 = 0;
         let mut outside_n2 = 0;

@@ -111,7 +111,7 @@ impl Camera {
     fn recalculate_view(&mut self) {
         if self.dirty_view {
             self.dirty_view = false;
-            self.view_matrix = Mat4::from_quat(self.rotation) * Mat4::from_translation(self.position);
+            self.view_matrix = Mat4::from_quat(self.rotation) * Mat4::from_translation(self.position * -1.0);
             self.view_inv_matrix = self.view_matrix.inverse();
         }
     }
