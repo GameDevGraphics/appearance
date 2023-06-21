@@ -11,7 +11,7 @@ impl Window {
     pub(crate) fn new(main_loop: &MainLoop, title: &'static str, width: u32, height: u32) -> Self {        
         let window_builder = glutin::window::WindowBuilder::new()
             .with_title(title)
-            .with_inner_size(glutin::dpi::LogicalSize::new(width, height));
+            .with_inner_size(glutin::dpi::PhysicalSize::new(width, height));
 
         let context = glutin::ContextBuilder::new()
             .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (3, 0)))

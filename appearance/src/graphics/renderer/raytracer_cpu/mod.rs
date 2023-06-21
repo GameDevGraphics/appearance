@@ -13,6 +13,8 @@ mod ray;
 use ray::*;
 mod simd_ray;
 use simd_ray::*;
+mod frustum;
+use frustum::*;
 mod mesh;
 use mesh::*;
 mod acc_structures;
@@ -164,85 +166,111 @@ impl RaytracerCPU {
         let chunk_count_y = (height as f32 / chunk_size as f32).ceil() as usize;
         let chunk_count = chunk_count_x * chunk_count_y;
 
+        let mut corner_rays = Vec::new();
+        for x in 0..2 {
+            for y in 0..2 {
+                let pixel_center = Vec2::new((x * width) as f32, (y * height) as f32) + Vec2::splat(0.5);
+                let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+                let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+                let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
+                corner_rays.push(Ray::new(&origin.xyz(), &direction.xyz()));
+            }
+        }
+        let triangle = Triangle::new(&Vec3::new(-0.5, 0.0, 0.0), &Vec3::new(0.0, 1.0, 0.0), &Vec3::new(1.0, 0.0, 0.0));
+        // let frustum = Frustum::new(
+        //     &corner_rays[2],
+        //     &corner_rays[3],
+        //     &corner_rays[1],
+        //     &corner_rays[0]
+        // );
+        let frustum = Frustum::new(
+            &corner_rays[1],
+            &corner_rays[0],
+            &corner_rays[2],
+            &corner_rays[3]
+        );
+
+        println!("Cull box: {}", triangle.intersect_frustum(&frustum));
+        
         (0..chunk_count).into_par_iter().for_each(|chunk_idx| {
             let chunk_x = chunk_idx % chunk_count_x;
             let chunk_y = chunk_idx / chunk_count_x;
-            // let range_x = (chunk_x * chunk_size)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize));
-            // let range_y = (chunk_y * chunk_size)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize));
-
-            // for x in range_x {
-            //     for y in range_y.clone() {
-            //         let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);
-            //         let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
-            //         let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
-            //         let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, -1.0, 1.0), 0.0));
-                
-            //         let ray = Ray::new(origin, &direction.xyz());
-
-            //         let closest_hit = tlas.intersect(&ray, 0.01, 100.0, blases);
-            //         if closest_hit.hit() {
-            //             let cold = Vec3::new(0.0, 1.0, 0.0);
-            //             let hot = Vec3::new(1.0, 0.0, 0.0);
-            //             //let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
-            //             //let color = cold.lerp(hot, t);
-            //             let color = Vec3::ONE.lerp(Vec3::ZERO, closest_hit.t * 0.1);
-                    
-            //             if let Ok(mut framebuffer) = framebuffer.lock() {
-            //                 framebuffer.set_pixel(x as u32, y as u32, &color);
-            //             }
-            //         } else {
-            //             if let Ok(mut framebuffer) = framebuffer.lock() {
-            //                 framebuffer.set_pixel(x as u32, y as u32, &Vec3::new(0.0, 0.0, 0.0));
-            //             }
-            //         }
-            //     }
-            // }
-
-            const SIMD_LANE_WIDTH: usize = 8;
-            const SIMD_LANE_HEIGHT: usize = 4;
-            let range_x = ((chunk_x * chunk_size) / SIMD_LANE_WIDTH)..(((chunk_x + 1) * chunk_size / SIMD_LANE_WIDTH).clamp(0, width as usize));
-            let range_y = ((chunk_y * chunk_size) / SIMD_LANE_HEIGHT)..(((chunk_y + 1) * chunk_size / SIMD_LANE_HEIGHT).clamp(0, height as usize));
+            let range_x = (chunk_x * chunk_size)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize));
+            let range_y = (chunk_y * chunk_size)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize));
 
             for x in range_x {
                 for y in range_y.clone() {
-                    let mut origins = [Vec3::ZERO; SIMD_LANE_WIDTH * SIMD_LANE_HEIGHT];
-                    let mut directions = [Vec3::ZERO; SIMD_LANE_WIDTH * SIMD_LANE_HEIGHT];
-                    for px in 0..SIMD_LANE_WIDTH {
-                        for py in 0..SIMD_LANE_HEIGHT {
-                            let pixel_center = Vec2::new((x * SIMD_LANE_WIDTH + px) as f32, (y * SIMD_LANE_HEIGHT + py) as f32) + Vec2::splat(0.5);
-                            let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
-                            let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
-                            let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, -1.0, 1.0), 0.0));
+                    let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);
+                    let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+                    let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+                    let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
+                
+                    let ray = Ray::new(origin, &direction.xyz());
 
-                            origins[px + py * SIMD_LANE_WIDTH] = *origin;
-                            directions[px + py * SIMD_LANE_WIDTH] = direction.xyz();
-                        }
-                    }
+                    let closest_hit = triangle.intersect(&ray, 0.01, 100.0);
+                    if closest_hit.hit() {
+                        let cold = Vec3::new(0.0, 1.0, 0.0);
+                        let hot = Vec3::new(1.0, 0.0, 0.0);
+                        //let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
+                        //let color = cold.lerp(hot, t);
+                        let color = Vec3::ONE.lerp(Vec3::ZERO, closest_hit.t * 0.1);
                     
-                    let ray = SIMDRay::new(&origins, &directions);
-                    let intersection = tlas.intersect_simd(&ray, 0.01, 100.0, blases);
-
-                    for px in 0..SIMD_LANE_WIDTH {
-                        for py in 0..SIMD_LANE_HEIGHT {
-                            if intersection.hit(px + py * SIMD_LANE_WIDTH) {
-                                if let Ok(mut framebuffer) = framebuffer.lock() {
-                                    // let cold = Vec3::new(0.0, 1.0, 0.0);
-                                    // let hot = Vec3::new(1.0, 0.0, 0.0);
-                                    // let t = ((intersection.heat(px + py * SIMD_LANES) as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
-                                    // let color = cold.lerp(hot, t);
-                                    let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t.to_array()[px + py * SIMD_LANE_WIDTH] * 0.1);
-
-                                    framebuffer.set_pixel((x * SIMD_LANE_WIDTH + px) as u32, (y * SIMD_LANE_HEIGHT + py) as u32, &color);
-                                }
-                            } else {
-                                if let Ok(mut framebuffer) = framebuffer.lock() {
-                                    framebuffer.set_pixel((x * SIMD_LANE_WIDTH + px) as u32, (y * SIMD_LANE_HEIGHT + py) as u32, &Vec3::ZERO);
-                                }
-                            }
+                        if let Ok(mut framebuffer) = framebuffer.lock() {
+                            framebuffer.set_pixel(x as u32, y as u32, &color);
+                        }
+                    } else {
+                        if let Ok(mut framebuffer) = framebuffer.lock() {
+                            framebuffer.set_pixel(x as u32, y as u32, &Vec3::new(0.0, 0.0, 0.0));
                         }
                     }
                 }
             }
+
+            // const SIMD_LANE_WIDTH: usize = 8;
+            // const SIMD_LANE_HEIGHT: usize = 4;
+            // let range_x = ((chunk_x * chunk_size) / SIMD_LANE_WIDTH)..(((chunk_x + 1) * chunk_size / SIMD_LANE_WIDTH).clamp(0, width as usize));
+            // let range_y = ((chunk_y * chunk_size) / SIMD_LANE_HEIGHT)..(((chunk_y + 1) * chunk_size / SIMD_LANE_HEIGHT).clamp(0, height as usize));
+
+            // for x in range_x {
+            //     for y in range_y.clone() {
+            //         let mut origins = [Vec3::ZERO; SIMD_LANE_WIDTH * SIMD_LANE_HEIGHT];
+            //         let mut directions = [Vec3::ZERO; SIMD_LANE_WIDTH * SIMD_LANE_HEIGHT];
+            //         for px in 0..SIMD_LANE_WIDTH {
+            //             for py in 0..SIMD_LANE_HEIGHT {
+            //                 let pixel_center = Vec2::new((x * SIMD_LANE_WIDTH + px) as f32, (y * SIMD_LANE_HEIGHT + py) as f32) + Vec2::splat(0.5);
+            //                 let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+            //                 let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+            //                 let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, 1.0, 1.0), 0.0));
+
+            //                 origins[px + py * SIMD_LANE_WIDTH] = *origin;
+            //                 directions[px + py * SIMD_LANE_WIDTH] = direction.xyz();
+            //             }
+            //         }
+                    
+            //         let ray = SIMDRay::new(&origins, &directions);
+            //         let intersection = tlas.intersect_simd(&ray, 0.01, 100.0, blases);
+
+            //         for px in 0..SIMD_LANE_WIDTH {
+            //             for py in 0..SIMD_LANE_HEIGHT {
+            //                 if intersection.hit(px + py * SIMD_LANE_WIDTH) {
+            //                     if let Ok(mut framebuffer) = framebuffer.lock() {
+            //                         // let cold = Vec3::new(0.0, 1.0, 0.0);
+            //                         // let hot = Vec3::new(1.0, 0.0, 0.0);
+            //                         // let t = ((intersection.heat(px + py * SIMD_LANES) as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
+            //                         // let color = cold.lerp(hot, t);
+            //                         let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t.to_array()[px + py * SIMD_LANE_WIDTH] * 0.05);
+
+            //                         framebuffer.set_pixel((x * SIMD_LANE_WIDTH + px) as u32, (y * SIMD_LANE_HEIGHT + py) as u32, &color);
+            //                     }
+            //                 } else {
+            //                     if let Ok(mut framebuffer) = framebuffer.lock() {
+            //                         framebuffer.set_pixel((x * SIMD_LANE_WIDTH + px) as u32, (y * SIMD_LANE_HEIGHT + py) as u32, &Vec3::ZERO);
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
         });
     }
 }

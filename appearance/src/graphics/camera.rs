@@ -1,4 +1,5 @@
 use glam::*;
+use crate::{RIGHT, UP, FORWARD};
 
 pub struct Camera {
     position: Vec3,
@@ -41,16 +42,16 @@ impl Camera {
         }
     }
 
-    pub fn forward(&self) -> Vec3 {
-        self.rotation * Vec3::new(0.0, 0.0, 1.0)
+    pub fn right(&mut self) -> Vec3 {
+        (*self.view_inv_matrix() * Vec4::from((RIGHT, 0.0))).xyz()
     }
 
-    pub fn right(&self) -> Vec3 {
-        self.rotation * Vec3::new(1.0, 0.0, 0.0)
+    pub fn up(&mut self) -> Vec3 {
+        (*self.view_inv_matrix() * Vec4::from((UP, 0.0))).xyz()
     }
 
-    pub fn up(&self) -> Vec3 {
-        self.rotation * Vec3::new(0.0, 1.0, 0.0)
+    pub fn forward(&mut self) -> Vec3 {
+        (*self.view_inv_matrix() * Vec4::from((FORWARD, 0.0))).xyz()
     }
 
     pub fn get_position(&self) -> &Vec3 {

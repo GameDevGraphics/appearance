@@ -123,8 +123,8 @@ impl Input {
         self.mouse_pos = *mouse_pos;
     }
 
-    pub(crate) fn set_mouse_delta(&mut self, mouse_delta: &Vec2) {
-        self.mouse_delta = *mouse_delta;
+    pub(crate) fn add_mouse_delta(&mut self, mouse_delta: &Vec2) {
+        self.mouse_delta += *mouse_delta;
     }
 
     fn mb_to_idx(button: MouseButton) -> usize {

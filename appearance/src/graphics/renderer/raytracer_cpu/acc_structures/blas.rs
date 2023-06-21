@@ -1,6 +1,6 @@
 use glam::*;
 use crate::Timer;
-use super::{Ray, AABB, Intersection, SIMDRayGeneric, SIMDIntersectionGeneric};
+use super::{Ray, AABB, Intersection, SIMDRayGeneric, SIMDIntersectionGeneric, Frustum};
 
 use std::simd::*;
 
@@ -28,6 +28,7 @@ pub trait BLASPrimitive {
     fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection;
     fn intersect_simd<const LANES: usize>(&self, ray: &SIMDRayGeneric<LANES>, tmin: f32, tmax: f32)
         -> SIMDIntersectionGeneric<LANES> where LaneCount<LANES>: SupportedLaneCount;
+    fn intersect_frustum(&self, frustum: &Frustum) -> bool;
 }
 
 pub struct BLASInstance {
@@ -90,15 +91,12 @@ impl<T: BLASPrimitive> BLAS<T> {
         root_node.prim_count = self.primitives.len() as u32;
         root_node.update_bounds(&self.primitives, &self.indices);
 
-        let timer = Timer::new();
         Self::subdivide(0, &mut self.nodes, &mut self.node_count, &self.primitives, &mut self.indices, &triangle_centroids, build_mode);
-        println!("BLAS build in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
     }
 
     pub fn refit(&mut self) {
         assert_ne!(self.node_count, 0, "Failed to refit BLAS.");
 
-        let timer = Timer::new();
         for i in (0..self.node_count).rev() {
             let first_prim; {
                 let node = &mut self.nodes[i];
@@ -118,7 +116,6 @@ impl<T: BLASPrimitive> BLAS<T> {
 
             self.nodes[i].bounds = bounds_refitted;
         }
-        println!("BLAS refit in: {:.2}ms", (timer.elapsed() * 1000.0) as f32);
     }
 
     fn best_split(
@@ -340,85 +337,90 @@ impl<T: BLASPrimitive> BLAS<T> {
                     node = stack[stack_idx].unwrap();
                 }
             } else {
-                let lchild_idx = node.first_prim as usize;
-                let child1 = &self.nodes[lchild_idx];
-                let child2 = &self.nodes[lchild_idx + 1];
+                // Disable all bound checks to speed up this hotspot
+                unsafe {
+                    let lchild_idx = node.first_prim as usize;
+                    let child1 = self.nodes.get_unchecked(lchild_idx);
+                    let child2 = self.nodes.get_unchecked(lchild_idx + 1);
 
-                let mut dist1 = child1.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
-                let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
+                    let mut dist1 = child1.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
+                    let mut dist2 = child2.bounds.intersect_simd(ray, tmin, tmax).t.to_array();
 
-                let mut flip_childs = [false; LANES];
-                for i in 0..LANES {
-                    if dist1[i] > dist2[i] {
-                        std::mem::swap(&mut dist1[i], &mut dist2[i]);
-                        flip_childs[i] = true;
-                    }
-                }
-
-                // This crap can be reduced into 2 simd operations
-                let mut hit1 = [false; LANES];
-                let mut hit2 = [false; LANES];
-                for i in 0..LANES {
-                    hit1[i] = dist1[i] < closest.t.as_array()[i];
-                    hit2[i] = dist2[i] < closest.t.as_array()[i];
-                }
-                let mut missed_both = true;
-                for i in 0..LANES {
-                    if hit1[i] || hit2[i] {
-                        missed_both = false;
-                    }
-                }
-
-                if missed_both {
-                    if stack_idx == 0 {
-                        break;
-                    } else {
-                        stack_idx -= 1;
-                        node = stack[stack_idx].unwrap();
-                    }
-                } else {
-                    // Check if all rays that hit have the same node as closest
-                    let mut both_hit_as_closest = true;
-                    let mut hit1_indices = [0; LANES];
-                    let mut hit1_count = 0;
-                    let mut last_hit_flip = -1;
+                    let mut flip_childs = [false; LANES];
                     for i in 0..LANES {
-                        if hit1[i] {
-                            if last_hit_flip != -1 && last_hit_flip != flip_childs[i] as i32 {
-                                both_hit_as_closest = false;
-                            }
-                            last_hit_flip = flip_childs[i] as i32;
-
-                            hit1_indices[hit1_count] = i;
-                            hit1_count += 1;
+                        if dist1.get_unchecked(i) > dist2.get_unchecked(i) {
+                            std::mem::swap(dist1.get_unchecked_mut(i), dist2.get_unchecked_mut(i));
+                            *flip_childs.get_unchecked_mut(i) = true;
                         }
                     }
 
-                    // If both nodes are seen as the closest node, we add them both, the order is irrelevant
-                    if !both_hit_as_closest && hit1_count > 1 {
-                        node = if flip_childs[hit1_indices[0]] { child2 } else { child1 };
-                        stack[stack_idx] = Some(if flip_childs[hit1_indices[0]] { child1 } else { child2 });
-                        stack_idx += 1;
+                    // This crap can be reduced into 2 simd operations
+                    let mut hit1 = [false; LANES];
+                    let mut hit2 = [false; LANES];
+                    for i in 0..LANES {
+                        let closest_t = closest.t.as_array()[i];
+                        *hit1.get_unchecked_mut(i) = *dist1.get_unchecked(i) < closest_t;
+                        *hit2.get_unchecked_mut(i) = *dist2.get_unchecked(i) < closest_t;
                     }
-                    // If all rays have the same node as closest, we can be sure to add the first node
-                    else if both_hit_as_closest {
-                        // We now check if any ray hits the second node
-                        let mut any_hit2 = false;
-                        let mut any_hit2_idx = 0;
-                        for i in 0..hit1_count {
-                            if hit2[hit1_indices[i]] {
-                                any_hit2 = true;
-                                any_hit2_idx = hit1_indices[i];
-                            }
+                    let mut missed_both = true;
+                    for i in 0..LANES {
+                        if *hit1.get_unchecked(i) || *hit2.get_unchecked(i) {
+                            missed_both = false;
                         }
+                    }
 
-                        // Because the first node depends on whether or not there is a second node
-                        if any_hit2 {
-                            node = if flip_childs[any_hit2_idx] { child2 } else { child1 };
-                            stack[stack_idx] = Some(if flip_childs[any_hit2_idx] { child1 } else { child2 });
-                            stack_idx += 1;
+                    if missed_both {
+                        if stack_idx == 0 {
+                            break;
                         } else {
-                            node = if flip_childs[hit1_indices[0]] { child2 } else { child1 };
+                            stack_idx -= 1;
+                            node = stack.get_unchecked(stack_idx).unwrap();
+                        }
+                    } else {
+                        // Check if all rays that hit have the same node as closest
+                        let mut both_hit_as_closest = true;
+                        let mut hit1_indices = [0; LANES];
+                        let mut hit1_count = 0;
+                        let mut last_hit_flip = -1;
+                        for i in 0..LANES {
+                            if *hit1.get_unchecked(i) {
+                                let flip_childs = *flip_childs.get_unchecked(i) as i32;
+                                if last_hit_flip != -1 && last_hit_flip != flip_childs {
+                                    both_hit_as_closest = false;
+                                }
+                                last_hit_flip = flip_childs;
+
+                                *hit1_indices.get_unchecked_mut(hit1_count) = i;
+                                hit1_count += 1;
+                            }
+                        }
+
+                        // If both nodes are seen as the closest node, we add them both, the order is irrelevant
+                        if !both_hit_as_closest && hit1_count > 1 {
+                            node = if *flip_childs.get_unchecked(*hit1_indices.get_unchecked(0)) { child2 } else { child1 };
+                            stack[stack_idx] = Some(if *flip_childs.get_unchecked(*hit1_indices.get_unchecked(0)) { child1 } else { child2 });
+                            stack_idx += 1;
+                        }
+                        // If all rays have the same node as closest, we can be sure to add the first node
+                        else if both_hit_as_closest {
+                            // We now check if any ray hits the second node
+                            let mut any_hit2 = false;
+                            let mut any_hit2_idx = 0;
+                            for i in 0..hit1_count {
+                                if *hit2.get_unchecked(*hit1_indices.get_unchecked(i)) {
+                                    any_hit2 = true;
+                                    any_hit2_idx = *hit1_indices.get_unchecked(i);
+                                }
+                            }
+
+                            // Because the first node depends on whether or not there is a second node
+                            if any_hit2 {
+                                node = if *flip_childs.get_unchecked(any_hit2_idx) { child2 } else { child1 };
+                                stack[stack_idx] = Some(if *flip_childs.get_unchecked(any_hit2_idx) { child1 } else { child2 });
+                                stack_idx += 1;
+                            } else {
+                                node = if *flip_childs.get_unchecked(*hit1_indices.get_unchecked(0)) { child2 } else { child1 };
+                            }
                         }
                     }
                 }

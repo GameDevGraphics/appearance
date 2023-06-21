@@ -39,11 +39,11 @@ rpath = false                           # Sets the rpath linking option.
 
 [profile.release]                       # Modify profile settings via config.
 opt-level = 3                           # Optimization level.
-debug = true                            # Include debug info.
+debug = false                           # Include debug info.
 debug-assertions = false                # Enables debug assertions.
 overflow-checks = false                 # Enables runtime integer overflow checks.
-lto = true                              # Sets link-time optimization.
+lto = 'thin'                            # Sets link-time optimization.
 panic = 'abort'                         # The panic strategy.
-incremental = true                      # Incremental compilation.
+incremental = false                     # Incremental compilation.
 codegen-units = 1                       # Number of code generation units.
 rpath = false                           # Sets the rpath linking option.

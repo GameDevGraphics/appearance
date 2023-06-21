@@ -1,7 +1,7 @@
 use glam::*;
 use std::simd::*;
 use super::acc_structures::BLASPrimitive;
-use super::{SIMDRayGeneric, SIMDIntersectionGeneric};
+use super::{SIMDRayGeneric, SIMDIntersectionGeneric, Frustum};
 
 #[derive(Clone, Debug)]
 pub struct Ray {
@@ -284,6 +284,27 @@ impl BLASPrimitive for Triangle {
             ..Default::default()
         }
     }
+
+    fn intersect_frustum(&self, frustum: &Frustum) -> bool {
+        let corners = [
+            Vec4::from((self.p0, 1.0)),
+            Vec4::from((self.p1, 1.0)),
+            Vec4::from((self.p2, 1.0))
+        ];
+
+        let mut outside_n1 = 0;
+        let mut outside_n2 = 0;
+        let mut outside_n3 = 0;
+        let mut outside_n4 = 0;
+        for corner in corners {
+            if frustum.n1.dot(corner) < 0.0 { outside_n1 += 1; }
+            if frustum.n2.dot(corner) < 0.0 { outside_n2 += 1; }
+            if frustum.n3.dot(corner) < 0.0 { outside_n3 += 1; }
+            if frustum.n4.dot(corner) < 0.0 { outside_n4 += 1; }
+        }
+
+        !(outside_n1 == 3 || outside_n2 == 3 || outside_n3 == 3 || outside_n4 == 3)
+    }
 }
 
 impl AABB {
@@ -344,6 +365,21 @@ impl AABB {
         ]
     }
 
+    #[inline]
+    pub fn corners_vec4(&self) -> [Vec4; 8] {
+        [
+            Vec4::new(self.min.x, self.min.y, self.min.z, 1.0),
+            Vec4::new(self.max.x, self.min.y, self.min.z, 1.0),
+            Vec4::new(self.max.x, self.min.y, self.max.z, 1.0),
+            Vec4::new(self.min.x, self.min.y, self.max.z, 1.0),
+
+            Vec4::new(self.min.x, self.max.y, self.min.z, 1.0),
+            Vec4::new(self.max.x, self.max.y, self.min.z, 1.0),
+            Vec4::new(self.max.x, self.max.y, self.max.z, 1.0),
+            Vec4::new(self.min.x, self.max.y, self.max.z, 1.0)
+        ]
+    }
+
     pub fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection {
         let tx1 = (self.min.x - ray.origin.x) * ray.inv_direction.x;
         let tx2 = (self.max.x - ray.origin.x) * ray.inv_direction.x;
@@ -397,6 +433,23 @@ impl AABB {
             t: tmin,
             ..Default::default()
         }
+    }
+
+    pub fn intersect_frustum(&self, frustum: &Frustum) -> bool {
+        let corners = self.corners_vec4();
+
+        let mut outside_n1 = 0;
+        let mut outside_n2 = 0;
+        let mut outside_n3 = 0;
+        let mut outside_n4 = 0;
+        for corner in corners {
+            if frustum.n1.dot(corner) < 0.0 { outside_n1 += 1; }
+            if frustum.n2.dot(corner) < 0.0 { outside_n2 += 1; }
+            if frustum.n3.dot(corner) < 0.0 { outside_n3 += 1; }
+            if frustum.n4.dot(corner) < 0.0 { outside_n4 += 1; }
+        }
+
+        !(outside_n1 == 8 || outside_n2 == 8 || outside_n3 == 8 || outside_n4 == 8)
     }
 }
 

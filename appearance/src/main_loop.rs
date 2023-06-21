@@ -38,7 +38,7 @@ impl MainLoop {
     {
         let mut resources = Resources::new();
         let input = Input::new();
-        let mut graphics = Graphics::new(&self, "Appearance", 512, 512);
+        let mut graphics = Graphics::new(&self, "Appearance", 1024, 512);
         let user_state = init(&mut resources, &mut graphics);
 
         let mut app_state = AppState {
@@ -98,7 +98,7 @@ impl MainLoop {
                 | Event::DeviceEvent { event, ..} => {
                     match event {
                         | DeviceEvent::MouseMotion { delta } => {
-                            app_state.input.set_mouse_delta(&Vec2::new(delta.0 as f32, delta.1 as f32));
+                            app_state.input.add_mouse_delta(&Vec2::new(delta.0 as f32, delta.1 as f32));
                         },
                         | _ => {}
                     }
