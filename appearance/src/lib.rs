@@ -1,4 +1,5 @@
 #![feature(portable_simd)]
+#![allow(clippy::collapsible_else_if)]
 
 use glam::Vec3;
 pub static RIGHT: Vec3 = Vec3::new(1.0, 0.0, 0.0);

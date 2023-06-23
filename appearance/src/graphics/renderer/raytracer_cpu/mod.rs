@@ -9,12 +9,8 @@ use crate::{Window, Camera};
 
 mod framebuffer;
 use framebuffer::*;
-mod ray;
-use ray::*;
-mod simd_ray;
-use simd_ray::*;
-mod frustum;
-use frustum::*;
+mod primitives;
+use primitives::*;
 mod mesh;
 use mesh::*;
 mod acc_structures;
@@ -166,7 +162,7 @@ impl RaytracerCPU {
         let chunk_count_y = (height as f32 / chunk_size as f32).ceil() as usize;
         let chunk_count = chunk_count_x * chunk_count_y;
 
-        let mut corner_rays = Vec::new();
+        let mut corner_rays = Vec::new(); // 2 0 1 3
         for x in 0..2 {
             for y in 0..2 {
                 let pixel_center = Vec2::new((x * width) as f32, (y * height) as f32) + Vec2::splat(0.5);
@@ -176,51 +172,69 @@ impl RaytracerCPU {
                 corner_rays.push(Ray::new(&origin.xyz(), &direction.xyz()));
             }
         }
-        let aabb = AABB::new(&Vec3::ZERO, &Vec3::ONE);
-        let triangle = Triangle::new(&Vec3::new(-0.5, 0.0, 0.0), &Vec3::new(0.0, 1.0, 0.0), &Vec3::new(1.0, 0.0, 0.0));
-        // let frustum = Frustum::new(
-        //     &corner_rays[2],
-        //     &corner_rays[3],
-        //     &corner_rays[1],
-        //     &corner_rays[0]
-        // );
-        let frustum = Frustum::new(
-            &corner_rays[1],
-            &corner_rays[0],
-            &corner_rays[2],
-            &corner_rays[3]
-        );
-        println!("In frame: {}", aabb.intersect_frustum(&frustum));
         
         (0..chunk_count).into_par_iter().for_each(|chunk_idx| {
             let chunk_x = chunk_idx % chunk_count_x;
             let chunk_y = chunk_idx / chunk_count_x;
-            let range_x = (chunk_x * chunk_size)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize));
-            let range_y = (chunk_y * chunk_size)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize));
+            // let range_x = (chunk_x * chunk_size)..(((chunk_x + 1) * chunk_size).clamp(0, width as usize));
+            // let range_y = (chunk_y * chunk_size)..(((chunk_y + 1) * chunk_size).clamp(0, height as usize));
+
+            // for x in range_x {
+            //     for y in range_y.clone() {
+            //         let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);
+            //         let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+            //         let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+            //         let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
+                
+            //         let ray = Ray::new(origin, &direction.xyz());
+
+            //         let closest_hit = blases[0].intersect(&ray, 0.01, 100.0);
+            //         if closest_hit.hit() {
+            //             let color = Vec3::ONE.lerp(Vec3::ZERO, closest_hit.t * 0.1);
+                    
+            //             if let Ok(mut framebuffer) = framebuffer.lock() {
+            //                 framebuffer.set_pixel(x as u32, y as u32, &color);
+            //             }
+            //         } else  if let Ok(mut framebuffer) = framebuffer.lock() {
+            //             framebuffer.set_pixel(x as u32, y as u32, &Vec3::new(0.0, 0.0, 0.0));
+            //         }
+            //     }
+            // }
+
+            const PACKET_WIDTH: usize = 16;
+            const PACKET_HEIGHT: usize = 16;
+            let range_x = ((chunk_x * chunk_size) / PACKET_WIDTH)..(((chunk_x + 1) * chunk_size / PACKET_WIDTH).clamp(0, width as usize));
+            let range_y = ((chunk_y * chunk_size) / PACKET_HEIGHT)..(((chunk_y + 1) * chunk_size / PACKET_HEIGHT).clamp(0, height as usize));
 
             for x in range_x {
                 for y in range_y.clone() {
-                    let pixel_center = Vec2::new(x as f32, y as f32) + Vec2::splat(0.5);
-                    let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
-                    let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
-                    let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
-                
-                    let ray = Ray::new(origin, &direction.xyz());
+                    let mut rays = [Ray::default(); PACKET_WIDTH * PACKET_HEIGHT];
+                    for px in 0..PACKET_WIDTH {
+                        for py in 0..PACKET_HEIGHT {
+                            let pixel_center = Vec2::new((x * PACKET_WIDTH + px) as f32, (y * PACKET_HEIGHT + py) as f32) + Vec2::splat(0.5);
+                            let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+                            let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+                            let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
 
-                    let closest_hit = aabb.intersect(&ray, 0.01, 100.0);
-                    if closest_hit.hit() {
-                        let cold = Vec3::new(0.0, 1.0, 0.0);
-                        let hot = Vec3::new(1.0, 0.0, 0.0);
-                        //let t = ((closest_hit.heat as f32 - 20.0) / 80.0).clamp(0.0, 1.0);
-                        //let color = cold.lerp(hot, t);
-                        let color = Vec3::ONE.lerp(Vec3::ZERO, closest_hit.t * 0.1);
-                    
-                        if let Ok(mut framebuffer) = framebuffer.lock() {
-                            framebuffer.set_pixel(x as u32, y as u32, &color);
+                            rays[px + py * PACKET_WIDTH] = Ray::new(origin, &direction.xyz());
                         }
-                    } else {
-                        if let Ok(mut framebuffer) = framebuffer.lock() {
-                            framebuffer.set_pixel(x as u32, y as u32, &Vec3::new(0.0, 0.0, 0.0));
+                    }
+                    
+                    let ray_packet = RayPacket::from_cohorent(rays);
+                    let intersection = blases[0].intersect_packet(&ray_packet, 0.01, 100.0);
+
+                    for px in 0..PACKET_WIDTH {
+                        for py in 0..PACKET_HEIGHT {
+                            let intersection = intersection.intersection(px + py * PACKET_WIDTH);
+                            if intersection.hit() {
+                                if let Ok(mut framebuffer) = framebuffer.lock() {
+                                    let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t * 0.05);
+
+                                    framebuffer.set_pixel((x * PACKET_WIDTH + px) as u32, (y * PACKET_HEIGHT + py) as u32, &color);
+                                }
+                            } else if let Ok(mut framebuffer) = framebuffer.lock() {
+                                framebuffer.set_pixel((x * PACKET_WIDTH + px) as u32, (y * PACKET_HEIGHT + py) as u32, &Vec3::ZERO);
+                            }
                         }
                     }
                 }
@@ -240,7 +254,7 @@ impl RaytracerCPU {
             //                 let pixel_center = Vec2::new((x * SIMD_LANE_WIDTH + px) as f32, (y * SIMD_LANE_HEIGHT + py) as f32) + Vec2::splat(0.5);
             //                 let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
             //                 let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
-            //                 let direction = view_inv_matrix * Vec4::from((target.xyz().normalize() * Vec3::new(-1.0, 1.0, 1.0), 0.0));
+            //                 let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
 
             //                 origins[px + py * SIMD_LANE_WIDTH] = *origin;
             //                 directions[px + py * SIMD_LANE_WIDTH] = direction.xyz();
