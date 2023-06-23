@@ -3,8 +3,8 @@ use std::simd::*;
 
 use super::{RayPacketSize, SupportedRayPacketSize, Frustum};
 
-pub type SIMDRay = SIMDRayGeneric<16>;
-pub type SIMDIntersection = SIMDIntersectionGeneric<16>;
+pub type SIMDRay = SIMDRayGeneric<4>;
+pub type SIMDIntersection = SIMDIntersectionGeneric<4>;
 
 /*****************************************************************************
 *                               PUB STRUCTS
@@ -200,6 +200,14 @@ where RayPacketSize<SIZE>: SupportedRayPacketSize,
 
     pub fn frustum(&self) -> &Frustum {
         &self.frustum
+    }
+
+    pub fn apply_transform(&self, inv_transform: &Mat4) -> Self {
+        let mut transformed_rays = self.rays;
+        for i in 0..SIZE {
+            transformed_rays[i] = self.rays[i].apply_transform(inv_transform);
+        }
+        Self::from_cohorent(transformed_rays)
     }
 }
 

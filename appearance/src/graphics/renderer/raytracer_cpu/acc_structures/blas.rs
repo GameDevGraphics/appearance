@@ -433,7 +433,9 @@ impl<T: BLASPrimitive> BLAS<T> {
 
     pub fn intersect_simd_packet<const SIZE: usize, const LANES: usize>(&self,
         ray_packet: &SIMDRayPacket<SIZE, LANES>,
-        tmin: f32, tmax: f32
+        tmin: f32, tmax: f32,
+        mut indices: [usize; SIZE],
+        mut last: usize
     ) -> SIMDRayPacketIntersection<SIZE, LANES>
     where RayPacketSize<SIZE>: SupportedRayPacketSize,
         LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
@@ -442,11 +444,11 @@ impl<T: BLASPrimitive> BLAS<T> {
         let mut stack_idx = 0;
         let mut node = &self.nodes[0];
 
-        let mut indices = [0; SIZE];
-        for (i, index) in indices.iter_mut().enumerate() {
-            *index = i;
-        }
-        let mut last = SIZE;
+        // let mut indices = [0; SIZE];
+        // for (i, index) in indices.iter_mut().enumerate() {
+        //     *index = i;
+        // }
+        // let mut last = SIZE;
 
         loop {
             last = Self::part_simd_rays(ray_packet, &closest, &node.bounds, &mut indices, last, tmin, tmax);
@@ -666,6 +668,19 @@ impl BLASInstance {
     where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
         let transformed_ray = ray.apply_transform(&self.inv_transform);
         blases[self.blas_idx as usize].intersect_simd(&transformed_ray, tmin, tmax)
+    }
+
+    pub fn intersect_simd_packet<const SIZE: usize, const LANES: usize, T: BLASPrimitive>(&self,
+        ray_packet: &SIMDRayPacket<SIZE, LANES>,
+        tmin: f32, tmax: f32,
+        blases: &[&BLAS<T>],
+        indices: [usize; SIZE],
+        last: usize
+    ) -> SIMDRayPacketIntersection<SIZE, LANES>
+    where RayPacketSize<SIZE>: SupportedRayPacketSize,
+        LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
+        let transformed_ray_packet = ray_packet.apply_transform(&self.inv_transform);
+        blases[self.blas_idx as usize].intersect_simd_packet(&transformed_ray_packet, tmin, tmax, indices, last)
     }
 }
 

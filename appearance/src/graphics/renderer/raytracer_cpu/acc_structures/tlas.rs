@@ -303,10 +303,9 @@ impl TLAS {
             if last > 0 {
                 if node.is_leaf() {
                     if self.blas_instances[node.blas_idx as usize].intersect_frustum(ray_packet.frustum()) {
-                        for i in 0..last {
-                            let ray_idx = indices[i];
-                            let hit = self.blas_instances[node.blas_idx as usize].intersect_simd(ray_packet.ray(ray_idx), tmin, tmax, blases);
-                            closest.intersection_mut(ray_idx).store_closest(&hit);
+                        let hit = self.blas_instances[node.blas_idx as usize].intersect_simd_packet(ray_packet, tmin, tmax, blases, indices.clone(), last);
+                        for ray_idx in indices {
+                            closest.intersection_mut(ray_idx).store_closest(hit.intersection(ray_idx));
                         }
                     }     
 

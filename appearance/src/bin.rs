@@ -22,9 +22,9 @@ fn init(resources: &mut Resources, graphics: &mut Graphics) -> GameState {
     let helmet_model = resources.get_model("assets/models/DamagedHelmet/glTF/DamagedHelmet.gltf");
 
     let mut helmet_ids = Vec::new();
-    for x in -2..3 {
-        for y in -2..3 {
-            for z in -2..3 {
+    for x in -4..5 {
+        for y in -4..5 {
+            for z in -4..5 {
                 let mut transform = Transform::new();
                 transform.set_position(&Vec3::new(x as f32 * 2.0, y as f32 * 2.0, z as f32 * 2.0));
 
@@ -104,13 +104,13 @@ fn update(app: &mut AppState<GameState>) {
     }
 
     // Spin all helmets
-    // for helmet_id in &app.user_state.helmet_ids {
-    //     let helmet_renderer = app.graphics.mesh_renderer(helmet_id.clone());
-    //     helmet_renderer.transform.set_rotation(
-    //         &Quat::from_axis_angle(
-    //             Vec3::new(0.0, 1.0, 0.0),
-    //             (time * 15.0).to_radians()
-    //         )
-    //     );
-    // }
+    for helmet_id in &app.user_state.helmet_ids {
+        let helmet_renderer = app.graphics.mesh_renderer(helmet_id.clone());
+        helmet_renderer.transform.set_rotation(
+            &Quat::from_axis_angle(
+                Vec3::new(0.0, 1.0, 0.0),
+                (time * 15.0).to_radians()
+            )
+        );
+    }
 }
