@@ -154,18 +154,30 @@ impl AABB {
     pub fn intersect_frustum(&self, frustum: &Frustum) -> bool {
         let corners = self.inv_corners_vec4();
 
-        let mut outside_n1 = 0;
-        let mut outside_n2 = 0;
-        let mut outside_n3 = 0;
-        let mut outside_n4 = 0;
+        // let mut outside_n1 = 0;
+        // let mut outside_n2 = 0;
+        // let mut outside_n3 = 0;
+        // let mut outside_n4 = 0;
+        // for corner in corners {
+        //     if frustum.n1.dot(corner) > 0.0 { outside_n1 += 1; }
+        //     if frustum.n2.dot(corner) > 0.0 { outside_n2 += 1; }
+        //     if frustum.n3.dot(corner) > 0.0 { outside_n3 += 1; }
+        //     if frustum.n4.dot(corner) > 0.0 { outside_n4 += 1; }
+        // }
+
+        // !(outside_n1 == 8 || outside_n2 == 8 || outside_n3 == 8 || outside_n4 == 8)
+
+        let mut outside = i32x4::splat(0);
         for corner in corners {
-            if frustum.n1.dot(corner) > 0.0 { outside_n1 += 1; }
-            if frustum.n2.dot(corner) > 0.0 { outside_n2 += 1; }
-            if frustum.n3.dot(corner) > 0.0 { outside_n3 += 1; }
-            if frustum.n4.dot(corner) > 0.0 { outside_n4 += 1; }
+            let dot = frustum.n_x * f32x4::splat(corner.x)
+                                        + frustum.n_y * f32x4::splat(corner.y)
+                                        + frustum.n_z * f32x4::splat(corner.z)
+                                        + frustum.n_w * f32x4::splat(corner.w);
+            
+            outside += dot.simd_ge(f32x4::splat(0.0)).to_int();
         }
 
-        !(outside_n1 == 8 || outside_n2 == 8 || outside_n3 == 8 || outside_n4 == 8)
+        !outside.simd_eq(i32x4::splat(-8)).any()
     }
 }
 
