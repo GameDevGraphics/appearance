@@ -16,6 +16,12 @@ use mesh::*;
 mod acc_structures;
 use acc_structures::*;
 
+const CHUNK_SIZE: usize = 32;
+const PACKET_WIDTH: usize = 32;
+const PACKET_HEIGHT: usize = 32;
+const SIMD_LANE_WIDTH: usize = 4;
+const SIMD_LANE_HEIGHT: usize = 4;
+
 pub struct RaytracerCPU {
     framebuffer: Arc<Mutex<Framebuffer>>,
 
@@ -32,6 +38,8 @@ impl RaytracerCPU {
                 Framebuffer::new(window.get_width(), window.get_height())
             )
         );
+
+        rayon::ThreadPoolBuilder::new().stack_size(16 * 1024 * 1024).build_global().unwrap();
 
         RaytracerCPU {
             framebuffer,
@@ -114,7 +122,7 @@ impl private::Renderer for RaytracerCPU {
             let instances = &mesh.1.1;
             let mesh = &mut mesh.1.0;
 
-            mesh.animate();
+            //mesh.animate();
 
             blases.push(mesh.blas());
             let blas_idx = (blases.len() - 1) as u32;
@@ -157,9 +165,8 @@ impl RaytracerCPU {
         proj_inv_matrix: Mat4, view_inv_matrix: Mat4, origin: &Vec3,
         blases: &[&BLAS<Triangle>], tlas: &TLAS
     ) {
-        let chunk_size = 32; // MUST BE MULTIPLE of `SIMD_LANE_WIDTH` and `SIMD_LANE_HEIGHT`!
-        let chunk_count_x = (width as f32 / chunk_size as f32).ceil() as usize;
-        let chunk_count_y = (height as f32 / chunk_size as f32).ceil() as usize;
+        let chunk_count_x = (width as f32 / CHUNK_SIZE as f32).ceil() as usize;
+        let chunk_count_y = (height as f32 / CHUNK_SIZE as f32).ceil() as usize;
         let chunk_count = chunk_count_x * chunk_count_y;
 
         let mut corner_rays = Vec::new(); // 2 0 1 3
@@ -201,44 +208,44 @@ impl RaytracerCPU {
             //     }
             // }
 
-            const PACKET_WIDTH: usize = 16;
-            const PACKET_HEIGHT: usize = 16;
-            let range_x = ((chunk_x * chunk_size) / PACKET_WIDTH)..(((chunk_x + 1) * chunk_size / PACKET_WIDTH).clamp(0, width as usize));
-            let range_y = ((chunk_y * chunk_size) / PACKET_HEIGHT)..(((chunk_y + 1) * chunk_size / PACKET_HEIGHT).clamp(0, height as usize));
+            // const PACKET_WIDTH: usize = 16;
+            // const PACKET_HEIGHT: usize = 16;
+            // let range_x = ((chunk_x * chunk_size) / PACKET_WIDTH)..(((chunk_x + 1) * chunk_size / PACKET_WIDTH).clamp(0, width as usize));
+            // let range_y = ((chunk_y * chunk_size) / PACKET_HEIGHT)..(((chunk_y + 1) * chunk_size / PACKET_HEIGHT).clamp(0, height as usize));
+            
+            // for x in range_x {
+            //     for y in range_y.clone() {
+            //         let mut rays = [Ray::default(); PACKET_WIDTH * PACKET_HEIGHT];
+            //         for px in 0..PACKET_WIDTH {
+            //             for py in 0..PACKET_HEIGHT {
+            //                 let pixel_center = Vec2::new((x * PACKET_WIDTH + px) as f32, (y * PACKET_HEIGHT + py) as f32) + Vec2::splat(0.5);
+            //                 let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+            //                 let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+            //                 let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
 
-            for x in range_x {
-                for y in range_y.clone() {
-                    let mut rays = [Ray::default(); PACKET_WIDTH * PACKET_HEIGHT];
-                    for px in 0..PACKET_WIDTH {
-                        for py in 0..PACKET_HEIGHT {
-                            let pixel_center = Vec2::new((x * PACKET_WIDTH + px) as f32, (y * PACKET_HEIGHT + py) as f32) + Vec2::splat(0.5);
-                            let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
-                            let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
-                            let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
-
-                            rays[px + py * PACKET_WIDTH] = Ray::new(origin, &direction.xyz());
-                        }
-                    }
+            //                 rays[px + py * PACKET_WIDTH] = Ray::new(origin, &direction.xyz());
+            //             }
+            //         }
                     
-                    let ray_packet = RayPacket::from_cohorent(rays);
-                    let intersection = tlas.intersect_packet(&ray_packet, 0.01, 100.0, blases);
+            //         let ray_packet = RayPacket::from_cohorent(rays);
+            //         let intersection = blases[0].intersect_packet(&ray_packet, 0.01, 100.0);
 
-                    for px in 0..PACKET_WIDTH {
-                        for py in 0..PACKET_HEIGHT {
-                            let intersection = intersection.intersection(px + py * PACKET_WIDTH);
-                            if intersection.hit() {
-                                if let Ok(mut framebuffer) = framebuffer.lock() {
-                                    let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t * 0.05);
+            //         for px in 0..PACKET_WIDTH {
+            //             for py in 0..PACKET_HEIGHT {
+            //                 let intersection = intersection.intersection(px + py * PACKET_WIDTH);
+            //                 if intersection.hit() {
+            //                     if let Ok(mut framebuffer) = framebuffer.lock() {
+            //                         let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t * 0.05);
 
-                                    framebuffer.set_pixel((x * PACKET_WIDTH + px) as u32, (y * PACKET_HEIGHT + py) as u32, &color);
-                                }
-                            } else if let Ok(mut framebuffer) = framebuffer.lock() {
-                                framebuffer.set_pixel((x * PACKET_WIDTH + px) as u32, (y * PACKET_HEIGHT + py) as u32, &Vec3::ZERO);
-                            }
-                        }
-                    }
-                }
-            }
+            //                         framebuffer.set_pixel((x * PACKET_WIDTH + px) as u32, (y * PACKET_HEIGHT + py) as u32, &color);
+            //                     }
+            //                 } else if let Ok(mut framebuffer) = framebuffer.lock() {
+            //                     framebuffer.set_pixel((x * PACKET_WIDTH + px) as u32, (y * PACKET_HEIGHT + py) as u32, &Vec3::ZERO);
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
 
             // const SIMD_LANE_WIDTH: usize = 8;
             // const SIMD_LANE_HEIGHT: usize = 4;
@@ -285,6 +292,70 @@ impl RaytracerCPU {
             //         }
             //     }
             // }
+
+            const REAL_PACKET_WIDTH: usize = PACKET_WIDTH / SIMD_LANE_WIDTH;
+            const REAL_PACKET_HEIGHT: usize = PACKET_HEIGHT / SIMD_LANE_HEIGHT;
+            let range_x = ((chunk_x * CHUNK_SIZE) / PACKET_WIDTH)..(((chunk_x + 1) * CHUNK_SIZE / PACKET_WIDTH).clamp(0, width as usize));
+            let range_y = ((chunk_y * CHUNK_SIZE) / PACKET_HEIGHT)..(((chunk_y + 1) * CHUNK_SIZE / PACKET_HEIGHT).clamp(0, height as usize));
+
+            let mut rays = [SIMDRay::default(); REAL_PACKET_WIDTH * REAL_PACKET_HEIGHT];
+            let mut origins = [Vec3::ZERO; SIMD_LANE_WIDTH * SIMD_LANE_HEIGHT];
+            let mut directions = [Vec3::ZERO; SIMD_LANE_WIDTH * SIMD_LANE_HEIGHT];
+            for x in range_x {
+                for y in range_y.clone() {
+                    for px in 0..REAL_PACKET_WIDTH {
+                        for py in 0..REAL_PACKET_HEIGHT {
+                            for sx in 0..SIMD_LANE_WIDTH {
+                                for sy in 0..SIMD_LANE_HEIGHT {
+                                    let pixel_center = Vec2::new(
+                                        (x * PACKET_WIDTH + px * SIMD_LANE_WIDTH + sx) as f32,
+                                        (y * PACKET_HEIGHT + py * SIMD_LANE_HEIGHT + sy) as f32
+                                    ) + Vec2::splat(0.5);
+                                    let uv = (pixel_center / Vec2::new(width as f32, height as f32)) * 2.0 - 1.0;
+                                    let target = proj_inv_matrix * Vec4::new(uv.x, uv.y, 1.0, 1.0);
+                                    let direction = view_inv_matrix * Vec4::from((target.xyz().normalize(), 0.0));
+        
+                                    origins[sx + sy * SIMD_LANE_WIDTH] = *origin;
+                                    directions[sx + sy * SIMD_LANE_WIDTH] = direction.xyz();
+                                }
+                            }
+
+                            rays[px + py * REAL_PACKET_WIDTH] = SIMDRay::new(&origins, &directions);
+                        }
+                    }
+                    
+                    let ray_packet = SIMDRayPacket::from_cohorent(rays);
+                    let intersection = tlas.intersect_simd_packet(&ray_packet, 0.01, 100.0, blases);
+
+                    for px in 0..REAL_PACKET_WIDTH {
+                        for py in 0..REAL_PACKET_HEIGHT {
+                            let intersection = intersection.intersection(px + py * REAL_PACKET_WIDTH);
+
+                            for sx in 0..SIMD_LANE_WIDTH {
+                                for sy in 0..SIMD_LANE_HEIGHT {
+                                    if intersection.hit(sx + sy * SIMD_LANE_WIDTH) {
+                                        if let Ok(mut framebuffer) = framebuffer.lock() {
+                                            let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t.to_array()[sx + sy * SIMD_LANE_WIDTH] * 0.05);
+                                            
+                                            framebuffer.set_pixel(
+                                                (x * PACKET_WIDTH + px * SIMD_LANE_WIDTH + sx) as u32,
+                                                (y * PACKET_HEIGHT + py * SIMD_LANE_HEIGHT + sy) as u32,
+                                                &color
+                                            );
+                                        }
+                                    } else if let Ok(mut framebuffer) = framebuffer.lock() {
+                                        framebuffer.set_pixel(
+                                            (x * PACKET_WIDTH + px * SIMD_LANE_WIDTH + sx) as u32,
+                                            (y * PACKET_HEIGHT + py * SIMD_LANE_HEIGHT + sy) as u32,
+                                            &Vec3::ZERO
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         });
     }
 }

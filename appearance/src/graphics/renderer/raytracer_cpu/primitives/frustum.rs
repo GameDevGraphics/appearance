@@ -18,17 +18,16 @@ pub struct Frustum {
 ******************************************************************************/
 
 impl Frustum {
-    pub fn new(top_right: &Ray, top_left: &Ray, bottom_left: &Ray, bottom_right: &Ray) -> Self {
-        let n1 = (*top_right.direction()).cross(*top_left.direction() - *top_right.direction());
-        let n2 = (*top_left.direction()).cross(*bottom_left.direction() - *top_left.direction());
-        let n3 = (*bottom_left.direction()).cross(*bottom_right.direction() - *bottom_left.direction());
-        let n4 = (*bottom_right.direction()).cross(*top_right.direction() - *bottom_right.direction());
+    pub fn new(top_right: &Vec3, top_left: &Vec3, bottom_left: &Vec3, bottom_right: &Vec3, origin: &Vec3) -> Self {
+        let n1 = (*top_right).cross(*top_left - *top_right);
+        let n2 = (*top_left).cross(*bottom_left - *top_left);
+        let n3 = (*bottom_left).cross(*bottom_right - *bottom_left);
+        let n4 = (*bottom_right).cross(*top_right - *bottom_right);
         
-        let e = *top_right.origin();
-        let d1 = n1.dot(e);
-        let d2 = n2.dot(e);
-        let d3 = n3.dot(e);
-        let d4 = n4.dot(e);
+        let d1 = n1.dot(*origin);
+        let d2 = n2.dot(*origin);
+        let d3 = n3.dot(*origin);
+        let d4 = n4.dot(*origin);
 
         Frustum {
             n1: Vec4::from((n1, d1)),

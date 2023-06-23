@@ -2,7 +2,7 @@ use glam::*;
 use std::simd::*;
 
 use super::{Ray, AABB, Intersection, Frustum, BLASPrimitive};
-use super::{SIMDRayGeneric, SIMDIntersectionGeneric};
+use super::{SIMDRayGeneric, SIMDIntersectionGeneric, StrideableLaneCount};
 
 /*****************************************************************************
 *                               PUB STRUCTS
@@ -149,7 +149,7 @@ impl BLASPrimitive for Triangle {
         ray: &SIMDRayGeneric<LANES>,
         tmin: f32, tmax: f32
     ) -> SIMDIntersectionGeneric<LANES>
-    where LaneCount<LANES>: SupportedLaneCount {
+    where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
         let edge1 = self.p1 - self.p0;
         let edge2 = self.p2 - self.p0;
 

@@ -1,7 +1,7 @@
 use glam::*;
 use std::simd::*;
 
-use super::{Triangle, Frustum, Ray, Intersection, SIMDRayGeneric, SIMDIntersectionGeneric};
+use super::{Triangle, Frustum, Ray, Intersection, SIMDRayGeneric, SIMDIntersectionGeneric, StrideableLaneCount};
 
 /*****************************************************************************
 *                               PUB STRUCTS
@@ -126,7 +126,7 @@ impl AABB {
         ray: &SIMDRayGeneric<LANES>,
         tmin: f32, tmax: f32
     ) -> SIMDIntersectionGeneric<LANES>
-    where LaneCount<LANES>: SupportedLaneCount {
+    where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
         let tx1 = (Simd::<f32, LANES>::splat(self.min.x) - ray.origin_x) * ray.inv_direction_x;
         let tx2 = (Simd::<f32, LANES>::splat(self.max.x) - ray.origin_x) * ray.inv_direction_x;
         let mut tmin = tx1.simd_min(tx2);

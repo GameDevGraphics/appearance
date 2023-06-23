@@ -1,16 +1,28 @@
 use glam::*;
 use std::simd::*;
 
-pub type SIMDRay = SIMDRayGeneric<32>;
-pub type SIMDIntersection = SIMDIntersectionGeneric<32>;
+use super::{RayPacketSize, SupportedRayPacketSize, Frustum};
+
+pub type SIMDRay = SIMDRayGeneric<16>;
+pub type SIMDIntersection = SIMDIntersectionGeneric<16>;
 
 /*****************************************************************************
 *                               PUB STRUCTS
 ******************************************************************************/
 
-#[derive(Clone, Debug)]
+pub trait StrideableLaneCount {
+    fn stride() -> usize;
+}
+
+impl StrideableLaneCount for LaneCount<4> { fn stride() -> usize { 2 } }
+impl StrideableLaneCount for LaneCount<8> { fn stride() -> usize { 4 } }
+impl StrideableLaneCount for LaneCount<16> { fn stride() -> usize { 4 } }
+impl StrideableLaneCount for LaneCount<32> { fn stride() -> usize { 8 } }
+impl StrideableLaneCount for LaneCount<64> { fn stride() -> usize { 8 } }
+
+#[derive(Clone, Copy, Debug)]
 pub struct SIMDRayGeneric<const LANES: usize>
-where LaneCount<LANES>: SupportedLaneCount {
+where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
     pub origin_x:           Simd<f32, LANES>,
     pub origin_y:           Simd<f32, LANES>,
     pub origin_z:           Simd<f32, LANES>,
@@ -22,13 +34,28 @@ where LaneCount<LANES>: SupportedLaneCount {
     pub inv_direction_z:    Simd<f32, LANES>
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct SIMDIntersectionGeneric<const LANES: usize>
-where LaneCount<LANES>: SupportedLaneCount {
+where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
     pub t:      Simd<f32, LANES>,
     pub u:      Simd<f32, LANES>,
     pub v:      Simd<f32, LANES>,
     pub heat:   Simd<i32, LANES>
+}
+
+#[derive(Clone, Debug)]
+pub struct SIMDRayPacket<const SIZE: usize, const LANES: usize>
+where RayPacketSize<SIZE>: SupportedRayPacketSize,
+    LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
+    rays: [SIMDRayGeneric<LANES>; SIZE],
+    frustum: Frustum
+}
+
+#[derive(Clone, Debug)]
+pub struct SIMDRayPacketIntersection<const SIZE: usize, const LANES: usize>
+where RayPacketSize<SIZE>: SupportedRayPacketSize,
+    LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
+    intersections: [SIMDIntersectionGeneric<LANES>; SIZE]
 }
 
 /*****************************************************************************
@@ -36,7 +63,7 @@ where LaneCount<LANES>: SupportedLaneCount {
 ******************************************************************************/
 
 impl<const LANES: usize> SIMDRayGeneric<LANES>
-where LaneCount<LANES>: SupportedLaneCount {
+where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
     #[inline]
     pub fn new(origin: &[Vec3; LANES], direction: &[Vec3; LANES]) -> Self {
         let origin_x = Simd::<f32, LANES>::from_array(origin.map(|o| o.x));
@@ -95,8 +122,25 @@ where LaneCount<LANES>: SupportedLaneCount {
     }
 }
 
+impl<const LANES: usize> Default for SIMDRayGeneric<LANES>
+where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
+    fn default() -> Self {
+        SIMDRayGeneric {
+            origin_x:           Simd::splat(0.0),
+            origin_y:           Simd::splat(0.0),
+            origin_z:           Simd::splat(0.0),
+            direction_x:        Simd::splat(0.0),
+            direction_y:        Simd::splat(0.0),
+            direction_z:        Simd::splat(0.0),
+            inv_direction_x:    Simd::splat(0.0),
+            inv_direction_y:    Simd::splat(0.0),
+            inv_direction_z:    Simd::splat(0.0)
+        }
+    }
+}
+
 impl<const LANES: usize> Default for SIMDIntersectionGeneric<LANES>
-where LaneCount<LANES>: SupportedLaneCount {
+where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
     fn default() -> Self {
         SIMDIntersectionGeneric {
             t: Simd::<f32, LANES>::splat(f32::MAX),
@@ -108,7 +152,7 @@ where LaneCount<LANES>: SupportedLaneCount {
 }
 
 impl<const LANES: usize> SIMDIntersectionGeneric<LANES>
-where LaneCount<LANES>: SupportedLaneCount {
+where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
     pub fn hit(&self, i: usize) -> bool {
         self.t.as_array()[i] != f32::MAX
     }
@@ -128,4 +172,55 @@ where LaneCount<LANES>: SupportedLaneCount {
         let diff = other.heat - self.heat;
         self.heat += diff * Simd::<i32, LANES>::from_array(cmp.to_array().map(|x| x as i32));
     }
+}
+
+impl<const SIZE: usize, const LANES: usize> SIMDRayPacket<SIZE, LANES>
+where RayPacketSize<SIZE>: SupportedRayPacketSize,
+    LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
+    pub fn from_cohorent(rays: [SIMDRayGeneric<LANES>; SIZE]) -> Self {
+        let stride = RayPacketSize::<SIZE>::stride();
+        let simd_stride = LaneCount::<LANES>::stride();
+        let frustum = Frustum::new(
+            &rays[stride - 1].directions()[simd_stride - 1],
+            &rays[0].directions()[0],
+            &rays[SIZE - stride].directions()[LANES - simd_stride],
+            &rays[SIZE - 1].directions()[LANES - 1],
+            &rays[0].origins()[0]
+        );
+
+        SIMDRayPacket {
+            rays,
+            frustum
+        }
+    }
+
+    pub fn ray(&self, i: usize) -> &SIMDRayGeneric<LANES> {
+        &self.rays[i]
+    }
+
+    pub fn frustum(&self) -> &Frustum {
+        &self.frustum
+    }
+}
+
+impl<const SIZE: usize, const LANES: usize> SIMDRayPacketIntersection<SIZE, LANES>
+where RayPacketSize<SIZE>: SupportedRayPacketSize,
+    LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
+    pub fn intersection(&self, i: usize) -> &SIMDIntersectionGeneric<LANES> {
+        &self.intersections[i]
+    }
+
+    pub fn intersection_mut(&mut self, i: usize) -> &mut SIMDIntersectionGeneric<LANES> {
+        &mut self.intersections[i]
+    }
+}
+
+impl<const SIZE: usize, const LANES: usize> Default for SIMDRayPacketIntersection<SIZE, LANES>
+where RayPacketSize<SIZE>: SupportedRayPacketSize,
+    LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
+   fn default() -> Self {
+        SIMDRayPacketIntersection {
+            intersections: [SIMDIntersectionGeneric::default(); SIZE]
+        }
+   }
 }

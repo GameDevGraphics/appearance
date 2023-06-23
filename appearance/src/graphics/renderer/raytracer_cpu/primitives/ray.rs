@@ -107,10 +107,11 @@ where RayPacketSize<SIZE>: SupportedRayPacketSize {
     pub fn from_cohorent(rays: [Ray; SIZE]) -> Self {
         let stride = RayPacketSize::<SIZE>::stride();
         let frustum = Frustum::new(
-            &rays[stride - 1],
-            &rays[0],
-            &rays[SIZE - stride],
-            &rays[SIZE - 1]
+            &rays[stride - 1].direction,
+            &rays[0].direction,
+            &rays[SIZE - stride].direction,
+            &rays[SIZE - 1].direction,
+            &rays[0].origin
         );
 
         RayPacket {

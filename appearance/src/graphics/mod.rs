@@ -25,7 +25,7 @@ impl Graphics {
         let window = Window::new(main_loop, title, width, height);
         let renderer = Box::new(RaytracerCPU::new(&window));
         let mut camera = Camera::new();
-        camera.set_position(&Vec3::new(0.0, 0.0, 5.0));
+        camera.set_position(&Vec3::new(0.0, 0.0, 15.0));
 
         Graphics {
             window,
