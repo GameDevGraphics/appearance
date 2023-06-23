@@ -348,7 +348,7 @@ impl<T: BLASPrimitive> BLAS<T> {
         for (i, index) in indices.iter_mut().enumerate() {
             *index = i;
         }
-        let mut last = SIZE;//0;
+        let mut last = SIZE;
 
         loop {
             last = Self::part_rays(ray_packet, &closest, &node.bounds, &mut indices, last, tmin, tmax);
@@ -556,6 +556,10 @@ impl BLASInstance {
         );
 
         blases[self.blas_idx as usize].intersect(&transformed_ray, tmin, tmax)
+    }
+
+    pub fn intersect_frustum(&self, frustum: &Frustum) -> bool {
+        self.bounds.intersect_frustum(frustum)
     }
 
     pub fn intersect_simd<const LANES: usize, T: BLASPrimitive>(&self,

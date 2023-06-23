@@ -188,9 +188,9 @@ impl RaytracerCPU {
                 
             //         let ray = Ray::new(origin, &direction.xyz());
 
-            //         let closest_hit = blases[0].intersect(&ray, 0.01, 100.0);
+            //         let closest_hit = tlas.intersect(&ray, 0.01, 100.0, blases);
             //         if closest_hit.hit() {
-            //             let color = Vec3::ONE.lerp(Vec3::ZERO, closest_hit.t * 0.1);
+            //             let color = Vec3::ONE.lerp(Vec3::ZERO, closest_hit.t * 0.05);
                     
             //             if let Ok(mut framebuffer) = framebuffer.lock() {
             //                 framebuffer.set_pixel(x as u32, y as u32, &color);
@@ -221,7 +221,7 @@ impl RaytracerCPU {
                     }
                     
                     let ray_packet = RayPacket::from_cohorent(rays);
-                    let intersection = blases[0].intersect_packet(&ray_packet, 0.01, 100.0);
+                    let intersection = tlas.intersect_packet(&ray_packet, 0.01, 100.0, blases);
 
                     for px in 0..PACKET_WIDTH {
                         for py in 0..PACKET_HEIGHT {

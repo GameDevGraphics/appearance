@@ -1,5 +1,6 @@
 use glam::*;
 use super::{Ray, AABB, Intersection, BLASInstance, BLAS, BLASPrimitive, SIMDRayGeneric, SIMDIntersectionGeneric};
+use super::{RayPacket, RayPacketIntersection, RayPacketSize, SupportedRayPacketSize};
 
 use std::simd::*;
 
@@ -154,6 +155,100 @@ impl TLAS {
         }
 
         closest.heat += heat;
+
+        closest
+    }
+
+    fn part_rays<const SIZE: usize>(
+        ray_packet: &RayPacket<SIZE>,
+        closest_hit: &RayPacketIntersection<SIZE>,
+        aabb: &AABB,
+        indices: &mut[usize; SIZE],
+        last: usize,
+        tmin: f32, tmax: f32
+    ) -> usize
+    where RayPacketSize<SIZE>: SupportedRayPacketSize {
+        if aabb.intersect_frustum(ray_packet.frustum()) {
+            let mut first = 0;
+            for i in 0..last {
+                if aabb.intersect(ray_packet.ray(indices[i]), tmin, tmax).t < closest_hit.intersection(indices[i]).t {
+                    indices.swap(first, i);
+                    first += 1;
+                }
+            }
+            first
+        } else {
+            0
+        }
+    }
+
+    pub fn intersect_packet<const SIZE: usize, T: BLASPrimitive>(&self,
+        ray_packet: &RayPacket<SIZE>,
+        tmin: f32, tmax: f32,
+        blases: &[&BLAS<T>]
+    ) -> RayPacketIntersection<SIZE>
+    where RayPacketSize<SIZE>: SupportedRayPacketSize {
+        let mut closest = RayPacketIntersection::default();
+        let mut stack = [(None, 0); 64];
+        let mut stack_idx = 0;
+        let mut node = &self.nodes[0];
+
+        let mut indices = [0; SIZE];
+        for (i, index) in indices.iter_mut().enumerate() {
+            *index = i;
+        }
+        let mut last = SIZE;
+
+        loop {
+            last = Self::part_rays(ray_packet, &closest, &node.bounds, &mut indices, last, tmin, tmax);
+            
+            if last > 0 {
+                if node.is_leaf() {
+                    if self.blas_instances[node.blas_idx as usize].intersect_frustum(ray_packet.frustum()) {
+                        for i in 0..last {
+                            let ray_idx = indices[i];
+                            let hit = self.blas_instances[node.blas_idx as usize].intersect(ray_packet.ray(ray_idx), tmin, tmax, blases);
+                            if hit.t < closest.intersection(ray_idx).t {
+                                *closest.intersection_mut(ray_idx) = hit;
+                            }
+                        }
+                    }
+
+                    if stack_idx == 0 {
+                        break;
+                    } else {
+                        stack_idx -= 1;
+                        node = stack[stack_idx].0.unwrap();
+                        last = stack[stack_idx].1;
+                    }
+                } else {
+                    let lchild_idx = (node.left_right & 0xffff) as usize;
+                    let rchild_idx = (node.left_right >> 16) as usize;
+                    let mut child1 = &self.nodes[lchild_idx];
+                    let mut child2 = &self.nodes[rchild_idx];
+
+                    let origin = *ray_packet.ray(0).origin();
+                    let dist1 = child1.bounds.center().distance_squared(origin);
+                    let dist2 = child2.bounds.center().distance_squared(origin);
+                    if dist1 > dist2 {
+                        std::mem::swap(&mut child1, &mut child2);
+                    }
+
+                    node = child1;
+                    stack[stack_idx].0 = Some(child2);
+                    stack[stack_idx].1 = last;
+                    stack_idx += 1;
+                }
+            } else {
+                if stack_idx == 0 {
+                    break;
+                } else {
+                    stack_idx -= 1;
+                    node = stack[stack_idx].0.unwrap();
+                    last = stack[stack_idx].1;
+                }
+            }
+        }
 
         closest
     }
