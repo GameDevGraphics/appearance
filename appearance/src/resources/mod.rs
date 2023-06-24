@@ -70,7 +70,7 @@ impl Resources {
     ) -> ModelNode {
         let (position, rotation, scale) = node.transform().decomposed();
         let position = Vec3::new(position[0], position[1], position[2]);
-        let rotation = Quat::from_xyzw(rotation[3], rotation[0], rotation[1], rotation[2]);
+        let rotation = Quat::from_xyzw(rotation[0], rotation[1], rotation[2], rotation[3]);
         let scale = Vec3::new(scale[0], scale[1], scale[2]);
 
         let mut node_mesh = None;

@@ -288,7 +288,7 @@ impl RaytracerCPU {
                                 for sy in 0..SIMD_LANE_HEIGHT {
                                     if intersection.hit(sx + sy * SIMD_LANE_WIDTH) {
                                         if let Ok(mut framebuffer) = framebuffer.lock() {
-                                            let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t.to_array()[sx + sy * SIMD_LANE_WIDTH] * 0.05);
+                                            let color = Vec3::ONE.lerp(Vec3::ZERO, intersection.t.to_array()[sx + sy * SIMD_LANE_WIDTH] * 0.03);
                                             
                                             framebuffer.set_pixel(
                                                 (x * PACKET_WIDTH + px * SIMD_LANE_WIDTH + sx) as u32,
