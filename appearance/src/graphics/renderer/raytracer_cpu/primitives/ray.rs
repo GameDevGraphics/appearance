@@ -7,9 +7,9 @@ use super::Frustum;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Ray {
-    origin: Vec3,
-    direction: Vec3,
-    inv_direction: Vec3
+    pub origin: Vec3,
+    pub direction: Vec3,
+    pub inv_direction: Vec3
 }
 
 #[derive(Clone, Copy, Debug)]

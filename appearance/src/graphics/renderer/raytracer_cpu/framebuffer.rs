@@ -2,6 +2,7 @@ use std::ffi::c_void;
 use gl_helper::*;
 use glam::*;
 use crate::Window;
+use super::PipelineTarget;
 
 pub(crate) static DISPLAY_SHADER_SRC_VERT: &str = "
 #version 430 core
@@ -151,14 +152,6 @@ impl Framebuffer {
         self.framebuffer_textures[0].height
     }
 
-    #[inline]
-    pub fn set_pixel(&mut self, x: u32, y: u32, value: &Vec3) {
-        let (r, g, b) = ((value.x * 255.99) as u32, (value.y * 255.99) as u32, (value.z * 255.99) as u32);
-        let packed_value = (b << 16) | (g << 8) | r;
-
-        self.framebuffer_textures[self.texture_idx].set_pixel(x, y, packed_value);
-    }
-
     pub fn display(&mut self, window: &Window) {
         gl_clear_color(&Vec3::new(0.0, 0.0, 0.0));
         gl_clear();
@@ -181,6 +174,16 @@ impl Framebuffer {
 
         self.prev_texture_idx = self.texture_idx;
         self.texture_idx = (self.texture_idx + 1) % self.framebuffer_textures.len();
+    }
+}
+
+impl PipelineTarget for Framebuffer {
+    #[inline]
+    fn set_pixel(&mut self, x: u32, y: u32, value: &Vec3) {
+        let (r, g, b) = ((value.x * 255.99) as u32, (value.y * 255.99) as u32, (value.z * 255.99) as u32);
+        let packed_value = (b << 16) | (g << 8) | r;
+
+        self.framebuffer_textures[self.texture_idx].set_pixel(x, y, packed_value);
     }
 }
 

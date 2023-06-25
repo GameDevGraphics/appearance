@@ -1,7 +1,7 @@
 use glam::*;
 use std::simd::*;
 
-use super::{RayPacketSize, SupportedRayPacketSize, Frustum};
+use super::{RayPacketSize, SupportedRayPacketSize, Frustum, Intersection, Ray};
 
 pub type SIMDRay = SIMDRayGeneric<4>;
 pub type SIMDIntersection = SIMDIntersectionGeneric<4>;
@@ -120,6 +120,14 @@ where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
         }
         result
     }
+
+    pub fn ray(&self, i: usize) -> Ray {
+        Ray {
+            origin: Vec3::new(self.origin_x.as_array()[i], self.origin_y.as_array()[i], self.origin_z.as_array()[i]),
+            direction: Vec3::new(self.direction_x.as_array()[i], self.direction_y.as_array()[i], self.direction_z.as_array()[i]),
+            inv_direction: Vec3::new(self.inv_direction_x.as_array()[i], self.inv_direction_y.as_array()[i], self.inv_direction_z.as_array()[i])
+        }
+    }
 }
 
 impl<const LANES: usize> Default for SIMDRayGeneric<LANES>
@@ -153,12 +161,12 @@ where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
 
 impl<const LANES: usize> SIMDIntersectionGeneric<LANES>
 where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
-    pub fn hit(&self, i: usize) -> bool {
-        self.t.as_array()[i] != f32::MAX
-    }
-
-    pub fn heat(&self, i: usize) -> i32 {
-        self.heat.as_array()[i]
+    pub fn intersection(&self, i: usize) -> Intersection {
+        Intersection {
+            t: self.t.as_array()[i],
+            uv: Vec2::new(self.u.as_array()[i], self.v.as_array()[i]),
+            heat: 0
+        }
     }
 
     pub fn store_closest(&mut self, other: &SIMDIntersectionGeneric<LANES>) {
