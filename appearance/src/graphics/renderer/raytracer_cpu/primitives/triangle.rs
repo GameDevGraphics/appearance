@@ -12,7 +12,8 @@ use super::{SIMDRayGeneric, SIMDIntersectionGeneric, StrideableLaneCount};
 pub struct Triangle {
     pub p0: Vec3,
     pub p1: Vec3,
-    pub p2: Vec3
+    pub p2: Vec3,
+    pub indices: IVec3
 }
 
 /*****************************************************************************
@@ -21,11 +22,12 @@ pub struct Triangle {
 
 impl Triangle {
     #[inline]
-    pub fn new(p0: &Vec3, p1: &Vec3, p2: &Vec3) -> Self {
+    pub fn new(p0: &Vec3, p1: &Vec3, p2: &Vec3, indices: IVec3) -> Self {
         Triangle {
             p0: *p0,
             p1: *p1,
-            p2: *p2
+            p2: *p2,
+            indices
         }
     }
 
@@ -73,6 +75,11 @@ impl Triangle {
 }
 
 impl BLASPrimitive for Triangle {
+    #[inline]
+    fn indices(&self) -> IVec3 {
+        self.indices
+    }
+
     #[inline]
     fn centroid(&self) -> Vec3 {
         (self.p0 + self.p1 + self.p2) * 0.33333333

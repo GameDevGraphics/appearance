@@ -37,10 +37,14 @@ where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
 #[derive(Clone, Copy, Debug)]
 pub struct SIMDIntersectionGeneric<const LANES: usize>
 where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
-    pub t:      Simd<f32, LANES>,
-    pub u:      Simd<f32, LANES>,
-    pub v:      Simd<f32, LANES>,
-    pub heat:   Simd<i32, LANES>
+    pub t:          Simd<f32, LANES>,
+    pub u:          Simd<f32, LANES>,
+    pub v:          Simd<f32, LANES>,
+    pub blas:       Simd<i32, LANES>,
+    pub instance:   Simd<i32, LANES>,
+    pub indices_x:  Simd<i32, LANES>,
+    pub indices_y:  Simd<i32, LANES>,
+    pub indices_z:  Simd<i32, LANES>,
 }
 
 #[derive(Clone, Debug)]
@@ -154,7 +158,11 @@ where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
             t: Simd::<f32, LANES>::splat(f32::MAX),
             u: Simd::<f32, LANES>::splat(0.0),
             v: Simd::<f32, LANES>::splat(0.0),
-            heat: Simd::<i32, LANES>::splat(0)
+            blas: Simd::<i32, LANES>::splat(0),
+            instance: Simd::<i32, LANES>::splat(0),
+            indices_x: Simd::<i32, LANES>::splat(0),
+            indices_y: Simd::<i32, LANES>::splat(0),
+            indices_z: Simd::<i32, LANES>::splat(0)
         }
     }
 }
@@ -165,20 +173,32 @@ where LaneCount<LANES>: SupportedLaneCount + StrideableLaneCount {
         Intersection {
             t: self.t.as_array()[i],
             uv: Vec2::new(self.u.as_array()[i], self.v.as_array()[i]),
-            heat: 0
+            blas: self.blas.as_array()[i],
+            instance: self.instance.as_array()[i],
+            indices: IVec3::new(self.indices_x.as_array()[i], self.indices_y.as_array()[i], self.indices_z.as_array()[i])
         }
     }
 
     pub fn store_closest(&mut self, other: &SIMDIntersectionGeneric<LANES>) {
         let cmp = other.t.simd_lt(self.t);
-
         self.t = self.t.simd_min(other.t);
+
         let diff = other.u - self.u;
         self.u += diff * Simd::<f32, LANES>::from_array(cmp.to_array().map(|x| x as i32 as f32));
         let diff = other.v - self.v;
         self.v += diff * Simd::<f32, LANES>::from_array(cmp.to_array().map(|x| x as i32 as f32));
-        let diff = other.heat - self.heat;
-        self.heat += diff * Simd::<i32, LANES>::from_array(cmp.to_array().map(|x| x as i32));
+
+        let diff = other.blas - self.blas;
+        self.blas += diff * Simd::<i32, LANES>::from_array(cmp.to_array().map(|x| x as i32));
+        let diff = other.instance - self.instance;
+        self.instance += diff * Simd::<i32, LANES>::from_array(cmp.to_array().map(|x| x as i32));
+
+        let diff = other.indices_x - self.indices_x;
+        self.indices_x += diff * Simd::<i32, LANES>::from_array(cmp.to_array().map(|x| x as i32));
+        let diff = other.indices_y - self.indices_y;
+        self.indices_y += diff * Simd::<i32, LANES>::from_array(cmp.to_array().map(|x| x as i32));
+        let diff = other.indices_z - self.indices_z;
+        self.indices_z += diff * Simd::<i32, LANES>::from_array(cmp.to_array().map(|x| x as i32));
     }
 }
 

@@ -107,10 +107,7 @@ impl TLAS {
         let mut stack_idx = 0;
         let mut node = &self.nodes[0];
 
-        let mut heat = 0;
-
         loop {
-            heat += 1;
             if node.is_leaf() {
                 let hit = self.blas_instances[node.blas_idx as usize].intersect(ray, tmin, tmax, blases);
                 if hit.t < closest.t {
@@ -153,8 +150,6 @@ impl TLAS {
                 }
             }
         }
-
-        closest.heat += heat;
 
         closest
     }
@@ -303,9 +298,13 @@ impl TLAS {
             if last > 0 {
                 if node.is_leaf() {
                     if self.blas_instances[node.blas_idx as usize].intersect_frustum(ray_packet.frustum()) {
-                        let hit = self.blas_instances[node.blas_idx as usize].intersect_simd_packet(ray_packet, tmin, tmax, blases, indices.clone(), last);
+                        let mut hit = self.blas_instances[node.blas_idx as usize].intersect_simd_packet(ray_packet, tmin, tmax, blases, indices.clone(), last);
                         for ray_idx in indices {
-                            closest.intersection_mut(ray_idx).store_closest(hit.intersection(ray_idx));
+                            let hit = hit.intersection_mut(ray_idx);
+                            hit.blas = Simd::<i32, LANES>::splat(self.blas_instances[node.blas_idx as usize].blas_idx() as i32);
+                            hit.instance = Simd::<i32, LANES>::splat(node.blas_idx as i32);
+
+                            closest.intersection_mut(ray_idx).store_closest(hit);
                         }
                     }     
 
@@ -459,8 +458,6 @@ impl TLAS {
                 }
             }
         }
-
-        closest.heat += Simd::<i32, LANES>::splat(heat);
 
         closest
     }

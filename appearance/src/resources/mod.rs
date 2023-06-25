@@ -4,7 +4,7 @@ use glam::*;
 use std::fs;
 use std::ffi::CString;
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub mod model;
 pub use model::*;
@@ -48,7 +48,7 @@ impl Resources {
         self.image_manager.update();
     }
 
-    fn process_tex(&mut self, texture: &gltf::Texture, base_path: &String) -> Rc<Image> {
+    fn process_tex(&mut self, texture: &gltf::Texture, base_path: &String) -> Arc<Image> {
         let img = texture.source();
         let img = match img.source() {
             gltf::image::Source::Uri { uri, .. } => {
@@ -276,12 +276,12 @@ impl Resources {
     ) -> ModelNode {
         let mut root_node = self.process_node(node, buffers, images, base_path, materials);
         for child in node.children() {
-            root_node.children.push(Rc::new(self.process_nodes_recursive(&child, buffers, images, base_path, materials)));
+            root_node.children.push(Arc::new(self.process_nodes_recursive(&child, buffers, images, base_path, materials)));
         }
         root_node
     }
 
-    pub fn get_model(&mut self, asset_path: &str) -> Rc<Model> {
+    pub fn get_model(&mut self, asset_path: &str) -> Arc<Model> {
         match self.model_manager.get(&asset_path.to_owned()) {
             Some(resource) => resource,
             None => {
@@ -295,7 +295,7 @@ impl Resources {
                 let mut root_nodes = Vec::new();
                 if let Some(scene) = document.default_scene() {
                     for root_node in scene.nodes() {
-                        root_nodes.push(Rc::new(self.process_nodes_recursive(
+                        root_nodes.push(Arc::new(self.process_nodes_recursive(
                             &root_node,
                             &buffers,
                             &images,
@@ -305,9 +305,9 @@ impl Resources {
                     }
                 }
 
-                let resource = Rc::new(Model {
+                let resource = Arc::new(Model {
                     root_nodes,
-                    materials: materials.into_iter().map(Rc::new).collect()
+                    materials: materials.into_iter().map(Arc::new).collect()
                 });
 
                 self.model_manager.insert(resource.clone(), asset_path.to_owned());
@@ -316,12 +316,12 @@ impl Resources {
         }
     }
 
-    pub fn get_text(&mut self, asset_path: &str) -> Rc<String> {
+    pub fn get_text(&mut self, asset_path: &str) -> Arc<String> {
         match self.text_manager.get(&asset_path.to_owned()) {
             Some(resource) => resource,
             None => {
                 let contents = fs::read_to_string(asset_path).expect("Failed to read text file.");
-                let resource = Rc::new(contents);
+                let resource = Arc::new(contents);
 
                 self.text_manager.insert(resource.clone(), asset_path.to_owned());
                 resource
@@ -329,7 +329,7 @@ impl Resources {
         }
     }
 
-    pub fn get_image(&mut self, asset_path: &str, import_settings: Option<ImageImportSettings>) -> Rc<Image> {
+    pub fn get_image(&mut self, asset_path: &str, import_settings: Option<ImageImportSettings>) -> Arc<Image> {
         match self.image_manager.get(&asset_path.to_owned()) {
             Some(resource) => resource,
             None => {
@@ -355,7 +355,7 @@ impl Resources {
                     assert!(!data.is_null(), "Failed to read image.");
                     let data: Vec<u8> = std::slice::from_raw_parts(data, (width * height * channels) as usize).to_vec();
 
-                    let resource = Rc::new(Image::new(
+                    let resource = Arc::new(Image::new(
                         data,
                         &IVec2::new(width, height),
                         channels

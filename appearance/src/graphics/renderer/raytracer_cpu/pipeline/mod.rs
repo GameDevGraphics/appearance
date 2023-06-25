@@ -2,7 +2,7 @@ use glam::*;
 use std::sync::{Arc, Mutex};
 use rayon::prelude::*;
 
-use super::{Camera, CameraMatrices, Framebuffer};
+use super::{Camera, CameraMatrices, Framebuffer, Mesh};
 use super::primitives::*;
 use super::acc_structures::*;
 
@@ -25,15 +25,23 @@ pub trait PipelineLayout<P: Default + Copy, T: PipelineTarget + Send>: Send + Sy
     fn present(&self, payload: P, uv: &IVec2, render_target: &mut T);
 }
 
-pub struct Pipeline<P: Default + Copy, T: PipelineTarget + Send> {
-    pipeline_layout: Box<dyn PipelineLayout<P, T>>
+pub struct Pipeline<P: Default + Copy, T: PipelineTarget + Send, L: PipelineLayout<P, T>> {
+    pipeline_layout: L,
+    _payload: Option<P>,
+    _target: Option<T>
 }
 
-impl<P: Default + Copy, T: PipelineTarget + Send> Pipeline<P, T> {
-    pub fn new(pipeline_layout: Box<dyn PipelineLayout<P, T>>) -> Self {
+impl<P: Default + Copy, T: PipelineTarget + Send, L: PipelineLayout<P, T>> Pipeline<P, T, L> {
+    pub fn new(pipeline_layout: L) -> Self {
         Pipeline {
-            pipeline_layout
+            pipeline_layout,
+            _payload: None,
+            _target: None
         }
+    }
+
+    pub fn pipeline_layout(&mut self) -> &mut L {
+        &mut self.pipeline_layout
     }
 
     pub fn dispatch(&mut self,

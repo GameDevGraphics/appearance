@@ -16,7 +16,9 @@ pub struct Ray {
 pub struct Intersection {
     pub t: f32,
     pub uv: Vec2,
-    pub heat: u32
+    pub blas: i32,
+    pub instance: i32,
+    pub indices: IVec3
 }
 
 pub struct RayPacketSize<const SIZE: usize>;
@@ -97,7 +99,9 @@ impl Default for Intersection {
         Intersection {
             t: f32::MAX,
             uv: Vec2::ZERO,
-            heat: 0
+            blas: 0,
+            instance: 0,
+            indices: IVec3::ZERO
         }
     }
 }

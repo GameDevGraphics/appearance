@@ -2,7 +2,7 @@ use glam::*;
 use uuid::Uuid;
 
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
+use std::sync::Arc;
 use super::Image;
 
 #[derive(Clone, Debug)]
@@ -11,20 +11,20 @@ pub struct Material {
     pub index: Option<usize>,
 
     pub base_color_factor: Vec4,
-    pub base_color_texture: Option<Rc<Image>>,
+    pub base_color_texture: Option<Arc<Image>>,
 
     pub normal_scale: f32,
-    pub normal_texture: Option<Rc<Image>>,
+    pub normal_texture: Option<Arc<Image>>,
 
     pub metallic_factor: f32,
     pub roughness_factor: f32,
-    pub metallic_roughness_texture: Option<Rc<Image>>,
+    pub metallic_roughness_texture: Option<Arc<Image>>,
 
     pub occlusion_strength: f32,
-    pub occlusion_texture: Option<Rc<Image>>,
+    pub occlusion_texture: Option<Arc<Image>>,
 
     pub emissive_factor: Vec3,
-    pub emissive_texture: Option<Rc<Image>>,
+    pub emissive_texture: Option<Arc<Image>>,
 }
 
 impl Default for Material {
@@ -118,7 +118,7 @@ impl Hash for Mesh {
 
 #[derive(Clone, Debug)]
 pub struct ModelNode {
-    pub children: Vec<Rc<ModelNode>>,
+    pub children: Vec<Arc<ModelNode>>,
 
     pub position: Vec3,
     pub rotation: Quat,
@@ -141,6 +141,6 @@ impl Default for ModelNode {
 
 #[derive(Clone, Debug)]
 pub struct Model {
-    pub root_nodes: Vec<Rc<ModelNode>>,
-    pub materials: Vec<Rc<Material>>
+    pub root_nodes: Vec<Arc<ModelNode>>,
+    pub materials: Vec<Arc<Material>>
 }

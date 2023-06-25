@@ -1,4 +1,4 @@
-use std::{rc::Rc, collections::VecDeque};
+use std::{rc::Rc, collections::VecDeque, sync::Arc};
 
 use appearance::*;
 use glam::*;
@@ -18,7 +18,7 @@ struct GameState {
     last_dts: VecDeque<f32>
 }
 
-fn load_recursive(graphics: &mut Graphics, ids: &mut Vec<Rc<MeshRendererID>>, current_node: Rc<ModelNode>, mut transform_matrix: Mat4) {
+fn load_recursive(graphics: &mut Graphics, ids: &mut Vec<Rc<MeshRendererID>>, materials: &Vec<Arc<Material>>, current_node: Arc<ModelNode>, mut transform_matrix: Mat4) {
     transform_matrix *= *Transform::from_position_rotation_scale(
         current_node.position,
         current_node.rotation,
@@ -26,11 +26,15 @@ fn load_recursive(graphics: &mut Graphics, ids: &mut Vec<Rc<MeshRendererID>>, cu
     ).get_model_matrix();
 
     if let Some(mesh) = &current_node.mesh {
-        ids.push(graphics.add_mesh(mesh, Some(Transform::from_matrix(&transform_matrix))));
+        ids.push(graphics.add_mesh(
+            mesh.clone(),
+            materials[mesh.material_idx].clone(),
+            Some(Transform::from_matrix(&transform_matrix))
+        ));
     }
 
     for child in &current_node.children {
-        load_recursive(graphics, ids, child.clone(), transform_matrix);
+        load_recursive(graphics, ids, materials, child.clone(), transform_matrix);
     }
 }
 
@@ -41,7 +45,7 @@ fn init(resources: &mut Resources, graphics: &mut Graphics) -> GameState {
     root_transform.set_scale(&Vec3::splat(35.0));
 
     let mut pica_ids = Vec::new();
-    load_recursive(graphics, &mut pica_ids, pica_model.root_nodes[0].clone(), *root_transform.get_model_matrix());
+    load_recursive(graphics, &mut pica_ids, &pica_model.materials, pica_model.root_nodes[0].clone(), *root_transform.get_model_matrix());
 
     GameState {
         _pica_ids: pica_ids,

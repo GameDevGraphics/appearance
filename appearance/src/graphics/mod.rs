@@ -1,5 +1,7 @@
 use std::rc::Rc;
-use crate::Mesh;
+use std::sync::Arc;
+
+use crate::{Mesh, Material};
 
 use glam::*;
 
@@ -51,8 +53,8 @@ impl Graphics {
         &mut self.camera
     }
 
-    pub fn add_mesh(&mut self, mesh: &Mesh, transform: Option<Transform>) -> Rc<MeshRendererID> {
-        let id = self.renderer.add_mesh(mesh);
+    pub fn add_mesh(&mut self, mesh: Mesh, material: Arc<Material>, transform: Option<Transform>) -> Rc<MeshRendererID> {
+        let id = self.renderer.add_mesh(mesh, material);
         if let Some(transform) = transform {
             self.renderer.mesh_renderer(id.clone()).transform = transform;
         }

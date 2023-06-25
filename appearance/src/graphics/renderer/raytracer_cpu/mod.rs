@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use uuid::Uuid;
-use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 
 use glam::*;
@@ -20,11 +19,11 @@ use acc_structures::*;
 
 pub struct RaytracerCPU {
     framebuffer: Arc<Mutex<Framebuffer>>,
-    pipeline: Pipeline<main_pipeline::Payload, Framebuffer>,
+    pipeline: Pipeline<main_pipeline::Payload, Framebuffer, main_pipeline::MainPipeline>,
 
     mesh_handles: HandleQueue<MeshRendererID>,                  // Handle queue to hand out handles
     mesh_instances: HashMap<Rc<MeshRendererID>, MeshRenderer>,  // Every handle pointing to its instance
-    meshes: HashMap<Uuid, (Mesh, Vec<Rc<MeshRendererID>>)>      // Every mesh id with all its instances
+    meshes: HashMap<Uuid, (Arc<Mesh>, Vec<Rc<MeshRendererID>>)>      // Every mesh id with all its instances
 }
 
 impl RaytracerCPU {
@@ -38,7 +37,7 @@ impl RaytracerCPU {
 
         rayon::ThreadPoolBuilder::new().stack_size(16 * 1024 * 1024).build_global().unwrap();
 
-        let pipeline = Pipeline::new(Box::<main_pipeline::MainPipeline>::default());
+        let pipeline = Pipeline::new(main_pipeline::MainPipeline::default());
 
         RaytracerCPU {
             framebuffer,
@@ -69,26 +68,28 @@ impl RaytracerCPU {
 }
 
 impl Renderer for RaytracerCPU {
-    fn add_mesh(&mut self, mesh: &crate::Mesh) -> Rc<MeshRendererID> {
+    fn add_mesh(&mut self, mesh: crate::Mesh, material: Arc<crate::Material>) -> Rc<MeshRendererID> {
+        let mesh_id = mesh.get_id();
+
         // Add mesh if this is the first instance
         let mesh_renderer_ids = match self.meshes.get_mut(&mesh.get_id()) {
             Some(mesh_renderer_ids) => {
                 mesh_renderer_ids
             },
             None => {
-                let mesh_internal = Mesh::new(mesh);
-                self.meshes.insert(mesh.get_id(), (mesh_internal, vec![]));
-                self.meshes.get_mut(&mesh.get_id()).unwrap()
+                let mesh_internal = Arc::new(Mesh::new(mesh, material));
+                self.meshes.insert(mesh_id, (mesh_internal, vec![]));
+                self.meshes.get_mut(&mesh_id).unwrap()
             }
         };
 
         // Add mesh renderer instance to the mesh
-        let mesh_id = Rc::new(self.mesh_handles.pop());
-        let mesh_renderer = MeshRenderer::new(mesh.get_id());
-        mesh_renderer_ids.1.push(mesh_id.clone());
-        self.mesh_instances.insert(mesh_id.clone(), mesh_renderer);
+        let render_id = Rc::new(self.mesh_handles.pop());
+        let mesh_renderer = MeshRenderer::new(mesh_id);
+        mesh_renderer_ids.1.push(render_id.clone());
+        self.mesh_instances.insert(render_id.clone(), mesh_renderer);
         
-        mesh_id
+        render_id
     }
 
     fn mesh_renderer(&mut self, id: Rc<MeshRendererID>) -> &mut MeshRenderer {
@@ -114,19 +115,24 @@ impl private::Renderer for RaytracerCPU {
             panic!("Failed to get framebuffer mutex.")
         };
 
+        let mut meshes = Vec::new();
+        let mut transforms = Vec::new();
+
         let mut blases = Vec::new();
         let mut blas_instances = Vec::new();
         for mesh in &mut self.meshes {
             let instances = &mesh.1.1;
             let mesh = &mut mesh.1.0;
 
-            //mesh.animate();
+            meshes.push(mesh.clone());
 
             blases.push(mesh.blas());
             let blas_idx = (blases.len() - 1) as u32;
             
             for instance in instances {
                 let instance_transform = &mut self.mesh_instances.get_mut(instance).unwrap().transform;
+
+                transforms.push(*instance_transform.get_model_matrix());
                 blas_instances.push(BLASInstance::new(
                     *instance_transform.get_model_matrix(),
                     *instance_transform.get_inv_model_matrix(),
@@ -137,6 +143,10 @@ impl private::Renderer for RaytracerCPU {
         }
         let mut tlas = TLAS::new(blas_instances);
         tlas.rebuild();
+
+        let pipeline_layout = self.pipeline.pipeline_layout();
+        pipeline_layout.meshes = meshes;
+        pipeline_layout.transforms = transforms;
 
         self.pipeline.dispatch(
             width,

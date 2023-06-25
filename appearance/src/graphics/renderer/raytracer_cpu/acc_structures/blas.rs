@@ -24,6 +24,7 @@ pub enum BLASBuildMode {
 }
 
 pub trait BLASPrimitive {
+    fn indices(&self) -> IVec3;
     fn centroid(&self) -> Vec3;
     fn expand_aabb(&self, aabb: &mut AABB);
     fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Intersection;
@@ -258,10 +259,7 @@ impl<T: BLASPrimitive> BLAS<T> {
         let mut stack_idx = 0;
         let mut node = &self.nodes[0];
 
-        let mut heat = 0;
-
         loop {
-            heat += 1;
             if node.is_leaf() {
                 for i in node.first_prim..(node.first_prim + node.prim_count) {
                     let hit = self.primitives[self.indices[i as usize]].intersect(ray, tmin, tmax);
@@ -305,8 +303,6 @@ impl<T: BLASPrimitive> BLAS<T> {
                 }
             }
         }
-
-        closest.heat = heat;
 
         closest
     }
@@ -444,12 +440,6 @@ impl<T: BLASPrimitive> BLAS<T> {
         let mut stack_idx = 0;
         let mut node = &self.nodes[0];
 
-        // let mut indices = [0; SIZE];
-        // for (i, index) in indices.iter_mut().enumerate() {
-        //     *index = i;
-        // }
-        // let mut last = SIZE;
-
         loop {
             last = Self::part_simd_rays(ray_packet, &closest, &node.bounds, &mut indices, last, tmin, tmax);
             
@@ -457,9 +447,15 @@ impl<T: BLASPrimitive> BLAS<T> {
                 if node.is_leaf() {
                     for j in node.first_prim..(node.first_prim + node.prim_count) {
                         if self.primitives[self.indices[j as usize]].intersect_frustum(ray_packet.frustum()) {
+                            let prim_indices = self.primitives[self.indices[j as usize]].indices();
+
                             for i in 0..last {
                                 let ray_idx = indices[i];
-                                let hit = self.primitives[self.indices[j as usize]].intersect_simd(ray_packet.ray(ray_idx), tmin, tmax);
+                                let mut hit = self.primitives[self.indices[j as usize]].intersect_simd(ray_packet.ray(ray_idx), tmin, tmax);
+                                hit.indices_x = Simd::<i32, LANES>::splat(prim_indices.x);
+                                hit.indices_y = Simd::<i32, LANES>::splat(prim_indices.y);
+                                hit.indices_z = Simd::<i32, LANES>::splat(prim_indices.z);
+
                                 closest.intersection_mut(ray_idx).store_closest(&hit);
                             }
                         }                    
@@ -619,8 +615,6 @@ impl<T: BLASPrimitive> BLAS<T> {
             }
         }
 
-        closest.heat = Simd::<i32, LANES>::splat(heat);
-
         closest
     }
 }
@@ -645,6 +639,11 @@ impl BLASInstance {
     #[inline]
     pub fn bounds(&self) -> &AABB {
         &self.bounds
+    }
+
+    #[inline]
+    pub fn blas_idx(&self) -> u32 {
+        self.blas_idx
     }
 
     pub fn intersect<T: BLASPrimitive>(&self, ray: &Ray, tmin: f32, tmax: f32, blases: &[&BLAS<T>]) -> Intersection {

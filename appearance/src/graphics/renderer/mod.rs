@@ -1,7 +1,8 @@
 use uuid::Uuid;
 
 use std::rc::Rc;
-use crate::{Transform};
+use std::sync::Arc;
+use crate::Transform;
 
 mod handle_queue;
 use handle_queue::HandleQueue;
@@ -34,7 +35,7 @@ impl MeshRenderer {
 }
 
 pub trait Renderer: private::Renderer {
-    fn add_mesh(&mut self, model: &crate::Mesh) -> Rc<MeshRendererID>;
+    fn add_mesh(&mut self, mesh: crate::Mesh, material: Arc<crate::Material>) -> Rc<MeshRendererID>;
     fn mesh_renderer(&mut self, id: Rc<MeshRendererID>) -> &mut MeshRenderer;
 }
 

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 use crate::Timer;
 
 pub(super) struct ResourceManager<T: Clone> {
-    resources: Vec<(Rc<T>, String)>,
-    asset_paths: HashMap<String, Rc<T>>,
+    resources: Vec<(Arc<T>, String)>,
+    asset_paths: HashMap<String, Arc<T>>,
     kill_times: HashMap<*const T, f32>,
 
     timer: Timer,
@@ -33,8 +33,8 @@ impl<T: Clone> ResourceManager<T> {
         let mut resources_to_remove: Vec<(usize, String)> = Vec::new();
 
         for i in 0..self.resources.len() {
-            let resource_ptr = Rc::as_ptr(&self.resources[i].0);
-            let use_count = Rc::strong_count(&self.resources[i].0);
+            let resource_ptr = Arc::as_ptr(&self.resources[i].0);
+            let use_count = Arc::strong_count(&self.resources[i].0);
 
             if use_count <= 2 {
                 match self.kill_times.get(&resource_ptr) {
@@ -69,11 +69,11 @@ impl<T: Clone> ResourceManager<T> {
         }
     }
 
-    pub(super) fn get(&self, asset_path: &String) -> Option<Rc<T>> {
+    pub(super) fn get(&self, asset_path: &String) -> Option<Arc<T>> {
         self.asset_paths.get(asset_path).cloned()
     }
 
-    pub(super) fn insert(&mut self, resource: Rc<T>, asset_path: String) {
+    pub(super) fn insert(&mut self, resource: Arc<T>, asset_path: String) {
         self.resources.push((resource.clone(), asset_path.clone()));
         self.asset_paths.insert(asset_path, resource);
     }

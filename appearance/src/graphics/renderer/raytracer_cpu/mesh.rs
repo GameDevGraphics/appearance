@@ -1,21 +1,24 @@
-use crate::Timer;
+use glam::*;
+
+use std::sync::{Arc};
 
 use super::{Triangle, BLAS, BLASBuildMode};
 
 pub struct Mesh {
-    blas: BLAS<Triangle>,
-    timer: Timer,
-    triangles_original: Vec<Triangle>
+    mesh: crate::Mesh,
+    material: Arc<crate::Material>,
+    blas: BLAS<Triangle>
 }
 
 impl Mesh {
-    pub fn new(mesh: &crate::Mesh) -> Self {
+    pub fn new(mesh: crate::Mesh, material: Arc<crate::Material>) -> Self {
         let mut triangles = Vec::new();
         for i in 0..mesh.indices.len() / 3 {
             triangles.push(Triangle::new(
                 &mesh.vertices[mesh.indices[i * 3] as usize].position,
                 &mesh.vertices[mesh.indices[i * 3 + 1] as usize].position,
-                &mesh.vertices[mesh.indices[i * 3 + 2] as usize].position
+                &mesh.vertices[mesh.indices[i * 3 + 2] as usize].position,
+                IVec3::new(mesh.indices[i * 3] as i32, mesh.indices[i * 3 + 1] as i32, mesh.indices[i * 3 + 2] as i32)
             ))
         }
 
@@ -23,9 +26,9 @@ impl Mesh {
         blas.rebuild(BLASBuildMode::FastTrace);
 
         Mesh {
-            blas,
-            timer: Timer::new(),
-            triangles_original: triangles
+            mesh,
+            material,
+            blas
         }
     }
     
@@ -33,17 +36,11 @@ impl Mesh {
         &self.blas
     }
 
-    pub fn animate(&mut self) {
-        let time = self.timer.elapsed() as f32;
-        let triangles = self.blas.primitives();
+    pub fn mesh_data(&self) -> &crate::Mesh {
+        &self.mesh
+    }
 
-        let s = (time).sin();
-        for (i, triangle) in triangles.iter_mut().enumerate() {
-            triangle.p0.y = self.triangles_original[i].p0.y + self.triangles_original[i].p0.y * s * 0.1;
-            triangle.p1.y = self.triangles_original[i].p1.y + self.triangles_original[i].p1.y * s * 0.1;
-            triangle.p2.y = self.triangles_original[i].p2.y + self.triangles_original[i].p2.y * s * 0.1;
-        }
-
-        self.blas.refit();
+    pub fn material(&self) -> &Arc<crate::Material> {
+        &self.material
     }
 }
